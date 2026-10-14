@@ -548,6 +548,10 @@ def reindex():
 def ui():
     """Web UIを起動する。"""
     import uvicorn
+    web_dist = Path(__file__).resolve().parent.parent.parent / "web" / "dist"
+    if not web_dist.exists():
+        console.print("[yellow]web/dist が見つかりません。cd web && npm run build を先に実行してください。[/yellow]")
+        raise typer.Exit(1)
     console.print("[bold]litkit Web UI を起動します…[/bold]")
     console.print("  → http://localhost:7777")
     webbrowser.open("http://localhost:7777")

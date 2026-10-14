@@ -33,10 +33,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve built frontend if exists
-web_dist = ROOT / "web" / "dist"
-if web_dist.exists():
-    app.mount("/app", StaticFiles(directory=str(web_dist), html=True), name="frontend")
+def _mount_frontend():
+    web_dist = ROOT / "web" / "dist"
+    if web_dist.exists():
+        app.mount("/", StaticFiles(directory=str(web_dist), html=True), name="frontend")
+
+@app.on_event("startup")
+def _startup():
+    _mount_frontend()
 
 
 def _assess_relevance(text: str) -> str:
