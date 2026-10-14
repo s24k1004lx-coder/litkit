@@ -1,0 +1,35 @@
+# 論文PDF（著作権上、privateリポジトリでも同期しない）
+literature/pdf/
+literature/inbox/
+
+# データベース・キャッシュ
+data/*.db
+data/cache/
+
+# 環境変数
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+web/dist/
+web/.vite/
+
+# エディタ
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
