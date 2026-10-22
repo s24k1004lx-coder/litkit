@@ -14,17 +14,26 @@ class CrossRefAdapter(SourceAdapter):
     source = Source.CROSSREF
     BASE = "https://api.crossref.org/works"
 
-    async def search(self, query: str, limit: int = 10) -> list[SearchResult]:
+    async def search(
+        self, query: str, limit: int = 10, *,
+        page: int = 1, year_from: int | None = None, year_to: int | None = None,
+    ) -> list[SearchResult]:
+        params = {
+            "query": query,
+            "rows": limit,
+            "offset": (page - 1) * limit,
+            "select": "DOI,title,author,published-print,published-online,"
+                      "container-title,abstract,link,is-referenced-by-count",
+        }
+        filters = []
+        if year_from:
+            filters.append(f"from-pub-date:{year_from}")
+        if year_to:
+            filters.append(f"until-pub-date:{year_to}")
+        if filters:
+            params["filter"] = ",".join(filters)
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                self.BASE,
-                params={
-                    "query": query,
-                    "rows": limit,
-                    "select": "DOI,title,author,published-print,published-online,"
-                              "container-title,abstract,link,is-referenced-by-count",
-                },
-            )
+            resp = await client.get(self.BASE, params=params)
             resp.raise_for_status()
         items = resp.json().get("message", {}).get("items", [])
         return [self._parse(item) for item in items]

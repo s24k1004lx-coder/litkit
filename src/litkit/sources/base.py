@@ -15,7 +15,11 @@ class SourceAdapter(ABC):
     source: Source
 
     @abstractmethod
-    async def search(self, query: str, limit: int = 10) -> list[SearchResult]:
+    async def search(
+        self, query: str, limit: int = 10, *,
+        page: int = 1, year_from: int | None = None, year_to: int | None = None,
+    ) -> list[SearchResult]:
+        """query を検索する。page は1始まり。年範囲に対応できないソースは無視してよい（呼び出し側でも絞り込む）。"""
         ...
 
     @abstractmethod

@@ -1,13 +1,31 @@
-"""J-STAGE API アダプタ。国内学会誌のオープンアクセス論文検索・PDF取得。"""
+"""J-STAGE API アダプタ。国内学会誌の論文検索。"""
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from typing import Optional
+
 import httpx
-from bs4 import BeautifulSoup
 
 from .base import SourceAdapter
 from ..models import SearchResult, Source, Lang
+
+_NS = {
+    "a": "http://www.w3.org/2005/Atom",
+    "p": "http://prismstandard.org/namespaces/basic/2.0/",
+}
+
+
+def _text(el: ET.Element | None) -> str:
+    return (el.text or "").strip() if el is not None else ""
+
+
+def _pick(entry: ET.Element, tag: str) -> str:
+    """<tag><ja>..</ja><en>..</en></tag> から日本語優先で取り出す（空の <en/> に注意）。"""
+    parent = entry.find(f"a:{tag}", _NS)
+    if parent is None:
+        return ""
+    return _text(parent.find("a:ja", _NS)) or _text(parent.find("a:en", _NS)) or _text(parent)
 
 
 class JStageAdapter(SourceAdapter):
@@ -15,93 +33,73 @@ class JStageAdapter(SourceAdapter):
     source = Source.JSTAGE
     BASE = "https://api.jstage.jst.go.jp/searchapi/do"
 
-    async def search(self, query: str, limit: int = 10) -> list[SearchResult]:
-        params = {
+    async def search(
+        self, query: str, limit: int = 10, *,
+        page: int = 1, year_from: int | None = None, year_to: int | None = None,
+    ) -> list[SearchResult]:
+        params: dict = {
             "keyword": query,
             "count": limit,
+            "start": (page - 1) * limit + 1,
             "service": 3,  # 3 = article
         }
+        if year_from:
+            params["pubyearfrom"] = year_from
+        if year_to:
+            params["pubyearto"] = year_to
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(self.BASE, params=params)
             resp.raise_for_status()
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-        entries = soup.find_all("entry")
-        return [self._parse_entry(e) for e in entries]
+        return self._parse_feed(resp.content)
 
     async def fetch_metadata(self, identifier: str) -> Optional[SearchResult]:
         doi = identifier.strip().removeprefix("https://doi.org/")
-        params = {"doi": doi, "service": 3}
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(self.BASE, params=params)
+            resp = await client.get(self.BASE, params={"doi": doi, "service": 3})
             resp.raise_for_status()
+        results = self._parse_feed(resp.content)
+        return results[0] if results else None
 
-        soup = BeautifulSoup(resp.text, "html.parser")
-        entry = soup.find("entry")
-        if not entry:
-            return None
-        return self._parse_entry(entry)
+    def _parse_feed(self, raw: bytes) -> list[SearchResult]:
+        root = ET.fromstring(raw)
+        results = []
+        for entry in root.findall("a:entry", _NS):
+            r = self._parse_entry(entry)
+            if r.title:
+                results.append(r)
+        return results
 
-    def _parse_entry(self, entry) -> SearchResult:
-        title_el = entry.find("article_title")
-        title = ""
-        if title_el:
-            ja = title_el.find("ja")
-            en = title_el.find("en")
-            title = (ja.get_text() if ja else "") or (en.get_text() if en else "")
+    def _parse_entry(self, entry: ET.Element) -> SearchResult:
+        authors: list[str] = []
+        author_el = entry.find("a:author", _NS)
+        if author_el is not None:
+            # 日本語表記を優先し、無ければ英語表記を使う
+            for lang in ("ja", "en"):
+                names = [_text(n) for n in author_el.findall(f"a:{lang}/a:name", _NS)]
+                names = [n for n in names if n]
+                if names:
+                    authors = names
+                    break
 
-        authors = []
-        for author in entry.find_all("author"):
-            ja = author.find("ja")
-            en = author.find("en")
-            name = (ja.get_text() if ja else "") or (en.get_text() if en else "")
-            if name:
-                authors.append(name)
+        pubyear = _text(entry.find("a:pubyear", _NS))
+        year = int(pubyear) if pubyear.isdigit() else None
 
-        year = None
-        pubyear = entry.find("pubyear")
-        if pubyear:
-            try:
-                year = int(pubyear.get_text())
-            except ValueError:
-                pass
+        doi = _text(entry.find("p:doi", _NS)) or None
 
-        venue = None
-        jt = entry.find("journal_title")
-        if jt:
-            ja = jt.find("ja")
-            en = jt.find("en")
-            venue = (ja.get_text() if ja else "") or (en.get_text() if en else "")
-
-        doi_el = entry.find("doi")
-        doi = doi_el.get_text().strip() if doi_el else None
-
-        abstract = None
-        abs_el = entry.find("abstract")
-        if abs_el:
-            ja = abs_el.find("ja")
-            en = abs_el.find("en")
-            abstract = (ja.get_text() if ja else "") or (en.get_text() if en else "")
-            abstract = abstract.strip() or None
-
-        url_el = entry.find("article_link")
-        url = url_el.get_text().strip() if url_el else None
-
-        pdf_url = None
-        pdf_el = entry.find("cdjournal")
-        if url:
-            pdf_url = url.replace("/article/", "/_pdf/") if "/article/" in url else None
+        # en 側は言語切替用のパス（/-char/ja/）が付かない素のURL
+        link = _text(entry.find("a:article_link/a:en", _NS)) or _text(entry.find("a:article_link/a:ja", _NS)) or None
+        pdf_url = link[: -len("/_article")] + "/_pdf" if link and link.endswith("/_article") else None
 
         return SearchResult(
-            title=title,
+            title=_pick(entry, "article_title"),
             authors=authors,
             year=year,
-            venue=venue,
+            venue=_pick(entry, "material_title") or None,
             doi=doi,
-            url=url,
+            url=link,
             source=self.source,
             lang=Lang.JA,
-            abstract=abstract,
+            abstract=None,  # J-STAGE の検索 API は要旨を返さない
             pdf_url=pdf_url,
             is_open_access=True,
         )

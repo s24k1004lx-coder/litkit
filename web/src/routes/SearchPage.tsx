@@ -2,12 +2,13 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { api, type SearchResultItem } from '../lib/api';
 import { useBookmarks, bookmarksToMarkdown, type Bookmark } from '../lib/bookmarks';
 import { bulletPoints, citeAPA, paperKey } from '../lib/paperUtils';
-import { sourceClass, sourceName } from '../lib/sources';
+import { SEARCHABLE_SOURCES, sourceClass, sourceName } from '../lib/sources';
 import { SearchDetailPanel } from '../components/SearchDetailPanel';
 
 type Tab = 'results' | 'bookmarks';
 type SortKey = 'arrival' | 'relevance' | 'year';
 
+const PAGE_SIZE = 10; // 1ソース・1ページあたりの取得件数
 const RELEVANCE_RANK: Record<string, number> = { high: 0, mid: 1, low: 2 };
 const RELEVANCE_LABEL: Record<string, string> = { high: '高', mid: '中', low: '低' };
 const JA_KEY = 'litkit-search-ja';
@@ -34,7 +35,11 @@ export function SearchPage() {
   const [yearFrom, setYearFrom] = useState('');
   const [yearTo, setYearTo] = useState('');
   const [sort, setSort] = useState<SortKey>('arrival');
-  const [srcFilter, setSrcFilter] = useState<string>('all');
+  const [target, setTarget] = useState<string>('all');
+  const [activeQuery, setActiveQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [srcErrors, setSrcErrors] = useState<string[]>([]);
   const [ja, setJa] = useState(loadJa);
   const [similar, setSimilar] = useState<{ title: string; items: SearchResultItem[] } | null>(null);
   const [similarLoading, setSimilarLoading] = useState(false);
@@ -49,11 +54,14 @@ export function SearchPage() {
     toastTimer.current = window.setTimeout(() => setToast(null), 2000);
   }, []);
 
-  const doSearch = useCallback(() => {
-    if (!query.trim()) return;
+  const runSearch = useCallback((q: string, pageNo: number, tgt: string) => {
+    if (!q) return;
 
     abortRef.current?.();
 
+    setActiveQuery(q);
+    setPage(pageNo);
+    setHasMore(false);
     setLoading(true);
     setSearched(true);
     setTab('results');
@@ -62,11 +70,13 @@ export function SearchPage() {
     setResults([]);
     setEnQuery(null);
     setSourcesLoaded([]);
-    setSrcFilter('all');
+    setSrcErrors([]);
 
     const seenKeys = new Set<string>();
+    const from = Number(yearFrom) || undefined;
+    const to = Number(yearTo) || undefined;
 
-    const abort = api.searchStream(query, 20, {
+    const abort = api.searchStream(q, PAGE_SIZE, {
       onMeta: (data) => setEnQuery(data.en_query),
       onResults: (data) => {
         const newItems = data.items.filter((item) => {
@@ -78,14 +88,39 @@ export function SearchPage() {
         if (newItems.length > 0) {
           setResults((prev) => [...prev, ...newItems]);
         }
+        if (data.error) {
+          const message = data.error;
+          setSrcErrors((prev) => (prev.includes(message) ? prev : [...prev, message]));
+        }
         setSourcesLoaded((prev) => [...prev, data.source]);
       },
-      onDone: () => setLoading(false),
+      onDone: (data) => {
+        setHasMore(data.has_more);
+        setLoading(false);
+      },
       onError: () => setLoading(false),
+    }, {
+      sources: tgt === 'all' ? undefined : [tgt],
+      page: pageNo,
+      yearFrom: from,
+      yearTo: to,
     });
 
     abortRef.current = abort;
-  }, [query]);
+  }, [yearFrom, yearTo]);
+
+  const doSearch = () => runSearch(query.trim(), 1, target);
+
+  /** 検索対象を切り替える。検索済みなら同じキーワードで取り直す。 */
+  const changeTarget = (t: string) => {
+    setTarget(t);
+    if (searched && activeQuery) runSearch(activeQuery, 1, t);
+  };
+
+  const goPage = (pageNo: number) => {
+    runSearch(activeQuery, pageNo, target);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const findSimilar = useCallback(async (p: SearchResultItem) => {
     setSimilarLoading(true);
@@ -167,13 +202,12 @@ export function SearchPage() {
   };
 
   const base = similar ? similar.items : results;
-  const sources = useMemo(() => [...new Set(base.map((r) => r.source))], [base]);
 
   const visible = useMemo(() => {
     const from = yearFrom ? Number(yearFrom) : null;
     const to = yearTo ? Number(yearTo) : null;
     const filtered = base.filter((r) => {
-      if (srcFilter !== 'all' && r.source !== srcFilter) return false;
+      // 検索時にソース側でも絞っているが、年範囲に対応しないソースの分はここで落とす。
       // 年が不明な論文は、年で絞り込んでも落とさない
       if (r.year != null) {
         if (from != null && r.year < from) return false;
@@ -188,7 +222,7 @@ export function SearchPage() {
       return [...filtered].sort((a, b) => (b.year ?? -Infinity) - (a.year ?? -Infinity));
     }
     return filtered;
-  }, [base, srcFilter, yearFrom, yearTo, sort]);
+  }, [base, yearFrom, yearTo, sort]);
 
   const renderPaper = (r: SearchResultItem, removable = false) => {
     const saved = bm.has(r);
@@ -268,9 +302,9 @@ export function SearchPage() {
       <div className="subbar">
         <div className="subbar-inner">
           <label>年{' '}
-            <input type="number" value={yearFrom} onChange={(e) => setYearFrom(e.target.value)} placeholder="from" min={1900} max={2100} />
+            <input type="number" value={yearFrom} onChange={(e) => setYearFrom(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doSearch()} placeholder="from" min={1900} max={2100} />
             {' – '}
-            <input type="number" value={yearTo} onChange={(e) => setYearTo(e.target.value)} placeholder="to" min={1900} max={2100} />
+            <input type="number" value={yearTo} onChange={(e) => setYearTo(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doSearch()} placeholder="to" min={1900} max={2100} />
           </label>
           <label>並替{' '}
             <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
@@ -286,18 +320,17 @@ export function SearchPage() {
         </div>
       </div>
 
-      {sources.length > 1 && (
-        <div className="srcbar">
-          <div className="srcbar-inner">
-            <span className="lbl">ソース:</span>
-            {['all', ...sources].map((s) => (
-              <button key={s} className={`src-btn ${srcFilter === s ? 'on' : ''}`} onClick={() => setSrcFilter(s)}>
-                {s === 'all' ? '全て' : sourceName(s)}
-              </button>
-            ))}
-          </div>
+      <div className="srcbar">
+        <div className="srcbar-inner">
+          <span className="lbl">検索対象:</span>
+          {['all', ...SEARCHABLE_SOURCES].map((s) => (
+            <button key={s} className={`src-btn ${target === s ? 'on' : ''}`} onClick={() => changeTarget(s)}>
+              {s !== 'all' && <span className={`dot dot-${sourceClass(s) || 'other'}`} />}
+              {s === 'all' ? '全て' : sourceName(s)}
+            </button>
+          ))}
         </div>
-      )}
+      </div>
 
       <div className="main">
         <div className="tabs">
@@ -323,7 +356,7 @@ export function SearchPage() {
             ) : !searched && !similar ? (
               <div className="empty">
                 <b>キーワードを入力して検索</b>
-                CiNii・J-STAGE・Crossref・OpenAlex・Semantic Scholar・arXiv・NDL から横断検索します
+                OpenAlex・J-STAGE・CiNii・国立国会図書館サーチなどから横断検索します（上の「検索対象」で1つに絞ることもできます）
               </div>
             ) : visible.length === 0 && !spinning ? (
               <div className="empty">
@@ -338,8 +371,21 @@ export function SearchPage() {
                     {similarLoading ? '関連論文を取得中…' : `検索中…（${sourcesLoaded.length} ソース完了）`}
                   </div>
                 )}
+                {!similar && srcErrors.map((e) => <div key={e} className="src-err">{e}</div>)}
                 {visible.map((r) => renderPaper(r))}
               </>
+            )}
+
+            {!similar && searched && !loading && srcErrors.length > 0 && visible.length === 0 && (
+              <div>{srcErrors.map((e) => <div key={e} className="src-err">{e}</div>)}</div>
+            )}
+
+            {!similar && searched && (page > 1 || hasMore) && (
+              <div className="pag">
+                <button onClick={() => goPage(page - 1)} disabled={loading || page <= 1}>前へ</button>
+                <span>{page} ページ{target === 'all' ? '（各ソースの上位を表示）' : ''}</span>
+                <button onClick={() => goPage(page + 1)} disabled={loading || !hasMore}>次へ</button>
+              </div>
             )}
           </div>
         )}

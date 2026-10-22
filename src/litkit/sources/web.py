@@ -14,7 +14,10 @@ class WebAdapter(SourceAdapter):
     name = "Web"
     source = Source.WEB
 
-    async def search(self, query: str, limit: int = 10) -> list[SearchResult]:
+    async def search(
+        self, query: str, limit: int = 10, *,
+        page: int = 1, year_from: int | None = None, year_to: int | None = None,
+    ) -> list[SearchResult]:
         return []
 
     async def fetch_metadata(self, identifier: str) -> Optional[SearchResult]:

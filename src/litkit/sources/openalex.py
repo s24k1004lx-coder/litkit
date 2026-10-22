@@ -22,8 +22,13 @@ class OpenAlexAdapter(SourceAdapter):
             p["mailto"] = email
         return p
 
-    async def search(self, query: str, limit: int = 10) -> list[SearchResult]:
-        params = {**self._params(), "search": query, "per_page": limit}
+    async def search(
+        self, query: str, limit: int = 10, *,
+        page: int = 1, year_from: int | None = None, year_to: int | None = None,
+    ) -> list[SearchResult]:
+        params = {**self._params(), "search": query, "per_page": limit, "page": page}
+        if year_from or year_to:
+            params["filter"] = f"publication_year:{year_from or 1900}-{year_to or 2100}"
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(self.BASE, params=params)
             resp.raise_for_status()

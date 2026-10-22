@@ -22,12 +22,18 @@ class SemanticScholarAdapter(SourceAdapter):
             h["x-api-key"] = key
         return h
 
-    async def search(self, query: str, limit: int = 10) -> list[SearchResult]:
+    async def search(
+        self, query: str, limit: int = 10, *,
+        page: int = 1, year_from: int | None = None, year_to: int | None = None,
+    ) -> list[SearchResult]:
         params = {
             "query": query,
             "limit": limit,
+            "offset": (page - 1) * limit,
             "fields": "title,authors,year,venue,externalIds,abstract,isOpenAccess,openAccessPdf",
         }
+        if year_from or year_to:
+            params["year"] = f"{year_from or ''}-{year_to or ''}"
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 f"{self.BASE}/search",
@@ -35,7 +41,7 @@ class SemanticScholarAdapter(SourceAdapter):
                 headers=self._headers(),
             )
             if resp.status_code == 429:
-                return []
+                raise RuntimeError("Semantic Scholar が混み合っています（429）")
             resp.raise_for_status()
         data = resp.json().get("data", [])
         return [self._parse(item) for item in data]

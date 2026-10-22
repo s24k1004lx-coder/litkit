@@ -13,12 +13,15 @@ from ..models import SearchResult, Source, Lang
 class ArxivAdapter(SourceAdapter):
     name = "arXiv"
     source = Source.ARXIV
-    BASE = "http://export.arxiv.org/api/query"
+    BASE = "https://export.arxiv.org/api/query"
 
-    async def search(self, query: str, limit: int = 10) -> list[SearchResult]:
+    async def search(
+        self, query: str, limit: int = 10, *,
+        page: int = 1, year_from: int | None = None, year_to: int | None = None,
+    ) -> list[SearchResult]:
         params = {
             "search_query": f"all:{query}",
-            "start": 0,
+            "start": (page - 1) * limit,
             "max_results": limit,
             "sortBy": "relevance",
         }

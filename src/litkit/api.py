@@ -199,27 +199,50 @@ def _dedup_key(r: SearchResult) -> str:
     return r.doi or f"{r.title[:50]}_{r.year}"
 
 
-@app.get("/api/search")
-async def api_search(q: str, limit: int = 10):
-    ctx = load_research_context()
-    en_query = None
+def _select_adapters(sources: str | None):
+    """sources はカンマ区切りの Source 値（例: "jstage,cinii"）。空なら全ソース。"""
+    if not sources:
+        return [cls() for cls in ALL_ADAPTERS]
+    wanted = {s.strip() for s in sources.split(",") if s.strip()}
+    return [cls() for cls in ALL_ADAPTERS if cls.source.value in wanted]
+
+
+def _english_query(q: str) -> str | None:
+    """日本語クエリのときは、研究の文脈の英語キーワードでも並行して検索する。"""
     if any(ord(c) > 0x3000 for c in q):
-        en_keywords = ctx.get("keywords_en", [])
+        en_keywords = load_research_context().get("keywords_en", [])
         if en_keywords:
-            en_query = " ".join(en_keywords[:3])
+            return " ".join(en_keywords[:3])
+    return None
+
+
+@app.get("/api/sources")
+def api_sources():
+    return [{"id": cls.source.value, "name": cls.name} for cls in ALL_ADAPTERS]
+
+
+@app.get("/api/search")
+async def api_search(
+    q: str, limit: int = 10, sources: str | None = None,
+    page: int = Query(1, ge=1), year_from: int | None = None, year_to: int | None = None,
+):
+    en_query = _english_query(q)
+    adapters = _select_adapters(sources)
 
     tasks_list = []
-    for adapter_cls in ALL_ADAPTERS:
-        adapter = adapter_cls()
-        tasks_list.append(_safe_search_api(adapter, q, limit))
+    for adapter in adapters:
+        tasks_list.append(_safe_search_api(adapter, q, limit, page, year_from, year_to))
         if en_query:
-            tasks_list.append(_safe_search_api(adapter, en_query, limit))
+            tasks_list.append(_safe_search_api(adapter, en_query, limit, page, year_from, year_to))
 
     all_results = await asyncio.gather(*tasks_list)
 
     flat: list[SearchResult] = []
+    errors: list[dict] = []
     seen_keys: set[str] = set()
-    for batch in all_results:
+    for batch, error in all_results:
+        if error:
+            errors.append(error)
         for r in batch:
             key = _dedup_key(r)
             if key not in seen_keys:
@@ -233,26 +256,25 @@ async def api_search(q: str, limit: int = 10):
         "results": merged,
         "en_query": en_query,
         "count": len(merged),
+        "errors": errors,
     }
 
 
 @app.get("/api/search/stream")
-async def api_search_stream(q: str, limit: int = 10):
-    """SSEストリーミング検索。ソースごとに結果を逐次返す。"""
-    ctx = load_research_context()
-    en_query = None
-    if any(ord(c) > 0x3000 for c in q):
-        en_keywords = ctx.get("keywords_en", [])
-        if en_keywords:
-            en_query = " ".join(en_keywords[:3])
+async def api_search_stream(
+    q: str, limit: int = 10, sources: str | None = None,
+    page: int = Query(1, ge=1), year_from: int | None = None, year_to: int | None = None,
+):
+    """SSEストリーミング検索。ソースごとに結果を逐次返す。失敗したソースは error 付きで通知する。"""
+    en_query = _english_query(q)
+    adapters = _select_adapters(sources)
 
     tasks: list[tuple[str, asyncio.Task]] = []
-    for adapter_cls in ALL_ADAPTERS:
-        adapter = adapter_cls()
-        task = asyncio.create_task(_safe_search_api(adapter, q, limit))
+    for adapter in adapters:
+        task = asyncio.create_task(_safe_search_api(adapter, q, limit, page, year_from, year_to))
         tasks.append((adapter.name, task))
         if en_query:
-            task_en = asyncio.create_task(_safe_search_api(adapter, en_query, limit))
+            task_en = asyncio.create_task(_safe_search_api(adapter, en_query, limit, page, year_from, year_to))
             tasks.append((f"{adapter.name}(en)", task_en))
 
     async def event_stream():
@@ -260,6 +282,7 @@ async def api_search_stream(q: str, limit: int = 10):
             yield f"event: meta\ndata: {json.dumps({'en_query': en_query}, ensure_ascii=False)}\n\n"
 
         seen: set[str] = set()
+        has_more = False
         pending = {t: name for name, t in tasks}
 
         while pending:
@@ -268,19 +291,25 @@ async def api_search_stream(q: str, limit: int = 10):
             )
             for task in done:
                 source_name = pending.pop(task)
-                batch = task.result()
+                batch, error = task.result()
+                # 上限ぴったり返したソースがあれば、次のページがある可能性が高い
+                has_more = has_more or len(batch) >= limit
                 new_results = []
                 for r in batch:
                     key = _dedup_key(r)
                     if key not in seen:
                         seen.add(key)
                         new_results.append(r)
+                items = []
                 if new_results:
                     translations = await _translate_l1_batch(new_results)
                     items = [_result_to_dict(r, translations[i]) for i, r in enumerate(new_results)]
-                    yield f"event: results\ndata: {json.dumps({'source': source_name, 'items': items}, ensure_ascii=False)}\n\n"
+                payload = {"source": source_name, "items": items}
+                if error:
+                    payload["error"] = error["message"]
+                yield f"event: results\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
-        yield f"event: done\ndata: {json.dumps({'count': len(seen)})}\n\n"
+        yield f"event: done\ndata: {json.dumps({'count': len(seen), 'has_more': has_more, 'page': page})}\n\n"
 
     return StreamingResponse(
         event_stream(),
@@ -289,11 +318,14 @@ async def api_search_stream(q: str, limit: int = 10):
     )
 
 
-async def _safe_search_api(adapter, query, limit):
+async def _safe_search_api(adapter, query, limit, page=1, year_from=None, year_to=None):
+    """(結果, エラー) を返す。1ソースの失敗で全体を止めない。"""
     try:
-        return await adapter.search(query, limit)
-    except Exception:
-        return []
+        return await adapter.search(query, limit, page=page, year_from=year_from, year_to=year_to), None
+    except Exception as e:
+        # RuntimeError はアダプタが理由を日本語で付けたもの。それ以外は型名だけ出す（URL等を漏らさない）
+        reason = str(e) if isinstance(e, RuntimeError) else type(e).__name__
+        return [], {"source": adapter.name, "message": f"{adapter.name}: 取得に失敗しました（{reason}）"}
 
 
 class AbstractRequest(BaseModel):

@@ -108,13 +108,26 @@ export interface TimelineEntry {
 
 export interface StreamCallbacks {
   onMeta?: (data: { en_query: string }) => void;
-  onResults?: (data: { source: string; items: SearchResultItem[] }) => void;
-  onDone?: (data: { count: number }) => void;
+  /** error があるときは、そのソースの取得に失敗している */
+  onResults?: (data: { source: string; items: SearchResultItem[]; error?: string }) => void;
+  onDone?: (data: { count: number; has_more: boolean; page: number }) => void;
   onError?: (error: Error) => void;
 }
 
-function searchStream(q: string, limit: number, callbacks: StreamCallbacks): () => void {
-  const url = `${BASE}/search/stream?q=${encodeURIComponent(q)}&limit=${limit}`;
+export interface SearchOptions {
+  /** 検索対象の Source 値（例: ['jstage', 'cinii']）。空なら全ソース */
+  sources?: string[];
+  page?: number;
+  yearFrom?: number;
+  yearTo?: number;
+}
+
+function searchStream(q: string, limit: number, callbacks: StreamCallbacks, opts: SearchOptions = {}): () => void {
+  const params = new URLSearchParams({ q, limit: String(limit), page: String(opts.page ?? 1) });
+  if (opts.sources?.length) params.set('sources', opts.sources.join(','));
+  if (opts.yearFrom) params.set('year_from', String(opts.yearFrom));
+  if (opts.yearTo) params.set('year_to', String(opts.yearTo));
+  const url = `${BASE}/search/stream?${params}`;
   const controller = new AbortController();
 
   (async () => {

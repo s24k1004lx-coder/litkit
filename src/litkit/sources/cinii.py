@@ -16,12 +16,20 @@ class CiNiiAdapter(SourceAdapter):
     source = Source.CINII
     BASE = "https://cir.nii.ac.jp/opensearch/all"
 
-    async def search(self, query: str, limit: int = 10) -> list[SearchResult]:
+    async def search(
+        self, query: str, limit: int = 10, *,
+        page: int = 1, year_from: int | None = None, year_to: int | None = None,
+    ) -> list[SearchResult]:
         params = {
             "q": query,
             "count": limit,
+            "start": (page - 1) * limit + 1,
             "format": "json",
         }
+        if year_from:
+            params["from"] = year_from
+        if year_to:
+            params["until"] = year_to
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(self.BASE, params=params)
             resp.raise_for_status()
@@ -42,54 +50,62 @@ class CiNiiAdapter(SourceAdapter):
         return self._parse(resp.json())
 
     def _parse(self, item: dict) -> SearchResult:
-        title = item.get("title", "")
-        if isinstance(title, list):
-            title = title[0] if title else ""
+        title = _first(item.get("title"))
 
-        authors = []
-        for creator in item.get("creator", []):
-            if isinstance(creator, str):
-                authors.append(creator)
-            elif isinstance(creator, dict):
-                authors.append(creator.get("name", ""))
+        creators = item.get("dc:creator") or []
+        if isinstance(creators, str):
+            creators = [creators]
+        authors = [c.replace(", ", " ").strip() for c in creators if isinstance(c, str) and c.strip()]
 
         year = None
-        pub_date = item.get("publicationDate", "")
-        if pub_date and len(pub_date) >= 4:
-            try:
-                year = int(pub_date[:4])
-            except ValueError:
-                pass
+        pub_date = str(item.get("prism:publicationDate") or "")
+        if len(pub_date) >= 4 and pub_date[:4].isdigit():
+            year = int(pub_date[:4])
 
-        venue = item.get("publicationName", "")
-        if isinstance(venue, list):
-            venue = venue[0] if venue else None
+        venue = _first(item.get("prism:publicationName")) or None
 
-        doi = item.get("doi")
-        url = item.get("link", {}).get("@id") if isinstance(item.get("link"), dict) else item.get("@id", "")
+        link = item.get("link")
+        url = link.get("@id") if isinstance(link, dict) else item.get("@id", "")
 
-        description = item.get("description", "")
-        if isinstance(description, list):
-            description = " ".join(description)
+        description = _first(item.get("description"))
         if description:
             description = re.sub(r"<[^>]+>", "", description).strip()
-
-        naid = ""
-        if url and "cir.nii.ac.jp" in url:
-            parts = url.rstrip("/").split("/")
-            naid = parts[-1] if parts else ""
-
-        card_id = f"cinii-{naid}" if naid else f"cinii-{hash(title) & 0xFFFFFFFF:08x}"
 
         return SearchResult(
             title=title,
             authors=authors,
             year=year,
             venue=venue,
-            doi=doi,
-            url=url,
+            doi=_find_doi(item),
+            url=url or None,
             source=self.source,
             lang=Lang.JA,
             abstract=description or None,
             is_open_access=None,
         )
+
+
+def _first(v) -> str:
+    if isinstance(v, list):
+        return str(v[0]) if v else ""
+    return str(v) if v else ""
+
+
+def _find_doi(item: dict) -> str | None:
+    """dc:identifier（@type が DOI のもの）→ rdfs:seeAlso の順に DOI を探す。"""
+    ids = item.get("dc:identifier") or []
+    if isinstance(ids, dict):
+        ids = [ids]
+    for ident in ids:
+        if isinstance(ident, dict) and str(ident.get("@type", "")).upper().endswith("DOI"):
+            value = str(ident.get("@value", "")).strip()
+            if value:
+                return value.removeprefix("https://doi.org/")
+    see = item.get("rdfs:seeAlso") or []
+    if isinstance(see, dict):
+        see = [see]
+    for s in see:
+        ref = s.get("@id", "") if isinstance(s, dict) else ""
+        if "doi.org/" in ref:
+            return ref.split("doi.org/", 1)[1]
+    return None
