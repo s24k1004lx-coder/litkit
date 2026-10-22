@@ -1,5 +1,5 @@
 /* paper-researcher の UI を .pr 配下に閉じ込めたもの（scripts: 生成済み）。検索画面専用。 */
-.pr :root{--bg: #FFFFFF;
+.pr{--bg: #FFFFFF;
   --surface: #FFFFFF;
   --surface-2: #F3F3F3;
   --text: #111111;
@@ -81,13 +81,13 @@
   font-family:var(--font);font-size:17px;font-weight:900;letter-spacing:.1em;
   cursor:pointer;white-space:nowrap;transition:background .2s;}
 .pr .btn-search:hover{background:var(--accent-hover)}
-.pr.searched .hero{position:sticky;top:0;z-index:50;box-shadow:var(--shadow)}
-.pr.searched .hero-bg,.pr.searched .brand-kicker,.pr.searched .brand-sub{display:none}
-.pr.searched .hero-inner{padding:12px 24px;grid-template-columns:auto 1fr;grid-template-areas:"brand search";align-items:center;gap:24px}
-.pr.searched .brand-title{font-size:26px}
-.pr.searched .search-wrap{border-width:2px;max-width:none}
-.pr.searched .search-wrap input{padding:9px 14px;font-size:15px}
-.pr.searched .btn-search{padding:0 22px;font-size:15px}
+.pr .searched .hero{position:sticky;top:0;z-index:50;box-shadow:var(--shadow)}
+.pr .searched .hero-bg,.pr .searched .brand-kicker,.pr .searched .brand-sub{display:none}
+.pr .searched .hero-inner{padding:12px 24px;grid-template-columns:auto 1fr;grid-template-areas:"brand search";align-items:center;gap:24px}
+.pr .searched .brand-title{font-size:26px}
+.pr .searched .search-wrap{border-width:2px;max-width:none}
+.pr .searched .search-wrap input{padding:9px 14px;font-size:15px}
+.pr .searched .btn-search{padding:0 22px;font-size:15px}
 .pr .subbar{background:var(--surface);border-bottom:4px solid var(--accent);
   padding:10px 24px;font-size:14px;color:var(--text-2);}
 .pr .subbar-inner{max-width:1040px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
@@ -297,8 +297,8 @@
 .pr .paper::before{left:-8px}
 .pr .hero-inner{padding:44px 16px 36px;gap:26px}
 .pr .hero-bg i{width:170px;height:225px;right:-30px;top:30%;opacity:.55}
-.pr.searched .hero-inner{padding:10px 16px;grid-template-columns:1fr;grid-template-areas:"brand" "search";gap:8px}
-.pr.searched .brand-title{font-size:21px}
+.pr .searched .hero-inner{padding:10px 16px;grid-template-columns:1fr;grid-template-areas:"brand" "search";gap:8px}
+.pr .searched .brand-title{font-size:21px}
 .pr .subbar{padding:8px 16px}
 .pr .main{padding:0 16px 60px}
 .pr .tags{margin-left:0;width:100%}
@@ -327,3 +327,90 @@
 .pr .tr-note{font-size:11px;font-weight:700;color:var(--accent-text)}
 .pr .tr-note.fail{color:var(--warn)}
 .pr .spinner-inline{display:inline-block}
+
+/* ===== アプリ共通（全画面に広げた paper-researcher 風UI） ===== */
+.pr .appbar{background:#111;color:#f2f2f2;border-bottom:1px solid var(--border)}
+.pr .appbar-inner{max-width:1040px;margin:0 auto;padding:0 24px;display:flex;align-items:stretch;gap:2px;min-height:50px;flex-wrap:wrap}
+.pr .appbar .logo{display:flex;align-items:center;margin-right:20px;padding:0 16px;background:var(--accent);color:#fff;
+  font-family:var(--font-en);font-weight:900;font-size:21px;letter-spacing:-.02em;text-decoration:none}
+.pr .appbar .logo:hover{color:#fff}
+.pr .appbar .nav{display:flex;align-items:center;padding:0 16px;color:#f2f2f2;opacity:.65;text-decoration:none;
+  font-size:15px;font-weight:900;letter-spacing:.04em;transition:opacity .15s,box-shadow .2s var(--spring)}
+.pr .appbar .nav:hover{opacity:1;color:#f2f2f2}
+.pr .appbar .nav.on{opacity:1;color:#f2f2f2;box-shadow:inset 0 -5px 0 var(--accent)}
+
+.pr .page-head{padding:44px 0 4px}
+.pr .page-title{display:inline;margin:0;color:var(--text);font-weight:900;font-size:clamp(30px,5vw,46px);letter-spacing:-.03em;line-height:1.25;
+  background:linear-gradient(transparent 58%,var(--accent) 58%,var(--accent) 90%,transparent 90%) no-repeat;padding:0 .06em;
+  animation:pr-marker .9s .1s var(--spring) both}
+.pr .page-sub{font-family:var(--font-en);font-weight:800;font-size:13px;letter-spacing:.3em;text-transform:uppercase;color:var(--text-3);margin-top:14px}
+.pr .page-body{padding-top:28px}
+.pr .back{display:inline-block;margin:28px 0 0;padding:5px 14px;background:var(--text);color:var(--bg);border:none;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.pr .back:hover{background:var(--accent);color:#fff}
+
+.pr .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin-bottom:28px}
+.pr .stat{background:var(--surface);border:2px solid var(--text);border-top:8px solid var(--accent);padding:14px 18px 16px;
+  transition:transform .25s var(--spring),box-shadow .25s var(--spring)}
+.pr .stat:hover{transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--text)}
+.pr .stat-label{font-size:13px;font-weight:900;color:var(--text-2);letter-spacing:.04em}
+.pr .stat-value{font-family:var(--font-en);font-weight:800;font-size:42px;line-height:1.15;letter-spacing:-.02em}
+.pr .stat-sub{font-size:12px;color:var(--text-3);font-weight:700}
+
+.pr .block{background:var(--surface);border:2px solid var(--text);padding:18px 20px 20px;margin-bottom:24px}
+.pr .block .d-section-title{margin-bottom:16px}
+.pr .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.pr .chart-empty{height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:14px;text-align:center}
+.pr .callout{padding:14px 18px;margin-bottom:24px;background:var(--accent-bg);border-left:8px solid var(--accent);font-size:14px}
+.pr .callout h3{font-size:15px;font-weight:900;color:var(--accent-text);margin:0 0 6px}
+.pr .callout ul{margin:0;padding-left:18px;color:var(--text-2)}
+.pr .callout.warn{background:var(--surface);border-left-color:var(--warn);box-shadow:var(--shadow)}
+.pr .callout.warn h3{color:var(--warn)}
+.pr .activity-date{display:inline-block;min-width:78px;font-family:var(--font-en);font-weight:800;font-size:13px;color:var(--text-3)}
+
+.pr .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:24px 0 8px}
+.pr .toolbar .info{font-family:var(--font-en);font-weight:700;font-size:15px;color:var(--text-3)}
+.pr .lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:18px;margin-top:16px}
+.pr .lib-card{position:relative;display:flex;flex-direction:column;gap:8px;padding:16px 18px 18px;background:var(--surface);border:2px solid var(--text);cursor:pointer;
+  transition:transform .3s var(--spring),box-shadow .3s var(--spring)}
+.pr .lib-card::before{content:"";position:absolute;left:-2px;top:-2px;bottom:-2px;width:6px;background:var(--accent);transform:scaleY(0);transform-origin:top;transition:transform .4s var(--spring)}
+.pr .lib-card:hover{transform:translate(-3px,-3px);box-shadow:5px 5px 0 var(--accent)}
+.pr .lib-card:hover::before{transform:scaleY(1)}
+.pr .lib-title{font-size:16px;font-weight:900;line-height:1.45}
+.pr .lib-meta{font-size:13px;color:var(--text-3)}
+.pr .lib-l1{font-size:13px;color:var(--text-2);line-height:1.7}
+
+.pr .tbl{width:100%;border-collapse:collapse;font-size:14px;margin-top:16px}
+.pr .tbl th{background:var(--text);color:var(--bg);padding:8px 12px;text-align:left;font-weight:900;font-size:13px;letter-spacing:.04em}
+.pr .tbl td{padding:12px;border-bottom:1px solid var(--accent);vertical-align:top}
+.pr .tbl tr.clickable{cursor:pointer}
+.pr .tbl tbody tr:hover td{background:var(--accent-bg)}
+.pr .tbl tr.risk td{background:color-mix(in srgb,var(--warn) 9%,var(--surface))}
+.pr .tbl .sub{font-size:12px;color:var(--text-3)}
+.pr .tbl .num{text-align:right;font-family:var(--font-en);font-weight:700}
+.pr .tbl .none{display:inline-flex;align-items:center;gap:4px;color:var(--warn);font-weight:700;font-size:13px}
+
+.pr .bdg.v-default{background:var(--surface-2);color:var(--text-2)}
+.pr .bdg.v-ok{background:var(--line-green);color:#fff}
+.pr .bdg.v-warn{background:var(--accent-bg);color:var(--accent-text)}
+.pr .bdg.v-risk{background:var(--warn);color:#fff}
+.pr .bdg.v-info{background:var(--line-blue);color:#fff}
+.pr .bdg.v-accent{background:var(--accent);color:#fff}
+
+.pr .skel{background:var(--surface-2);margin-bottom:10px;animation:pr-pulse 1.4s ease-in-out infinite}
+@keyframes pr-pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+.pr .card-head{background:var(--surface);border:2px solid var(--text);border-left:12px solid var(--accent);padding:22px 26px;margin-top:20px}
+.pr .card-head h1{font-weight:900;font-size:clamp(22px,3vw,30px);line-height:1.4;letter-spacing:-.01em;margin:0 0 10px}
+.pr .card-head .d-links{margin-bottom:0;margin-top:14px}
+.pr .card-body{background:var(--surface);border:2px solid var(--text);border-top:none;padding:24px 26px;font-size:15px;line-height:1.9;color:var(--text);white-space:pre-wrap}
+.pr .card-body.plain{white-space:normal}
+.pr .report{background:var(--surface);border:2px solid var(--text);padding:24px 26px;white-space:pre-wrap;font-size:14px;line-height:1.9}
+.pr button:disabled{opacity:.5;cursor:default}
+
+@media(max-width:850px){
+  .pr .grid-2{grid-template-columns:1fr}
+  .pr .appbar-inner{padding:0 12px}
+  .pr .appbar .logo{margin-right:8px}
+  .pr .appbar .nav{padding:0 10px;font-size:14px}
+  .pr .page-head{padding-top:28px}
+}

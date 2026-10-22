@@ -4,7 +4,6 @@ import { useBookmarks, bookmarksToMarkdown, type Bookmark } from '../lib/bookmar
 import { bulletPoints, citeAPA, paperKey } from '../lib/paperUtils';
 import { sourceClass, sourceName } from '../lib/sources';
 import { SearchDetailPanel } from '../components/SearchDetailPanel';
-import '../styles/paper.css';
 
 type Tab = 'results' | 'bookmarks';
 type SortKey = 'arrival' | 'relevance' | 'year';
@@ -242,7 +241,7 @@ export function SearchPage() {
   const spinning = loading || similarLoading;
 
   return (
-    <div className={`pr${searched ? ' searched' : ''}`}>
+    <div className={searched ? 'searched' : undefined}>
       <header className="hero">
         <div className="hero-bg" aria-hidden="true"><i /><i /><i /></div>
         <div className="hero-inner">
