@@ -6,12 +6,27 @@ import { SEARCHABLE_SOURCES, sourceClass, sourceName } from '../lib/sources';
 import { SearchDetailPanel } from '../components/SearchDetailPanel';
 
 type Tab = 'results' | 'bookmarks';
-type SortKey = 'arrival' | 'relevance' | 'year';
+type SortKey = 'match' | 'arrival' | 'relevance' | 'year';
 
 const PAGE_SIZE = 10; // 1ソース・1ページあたりの取得件数
 const RELEVANCE_RANK: Record<string, number> = { high: 0, mid: 1, low: 2 };
 const RELEVANCE_LABEL: Record<string, string> = { high: '高', mid: '中', low: '低' };
 const JA_KEY = 'litkit-search-ja';
+
+const normalize = (s: string) => s.toLowerCase().replace(/[\s　:：、,，。.\-‐―－]+/g, ' ').trim();
+
+/** 検索語とタイトルの一致度。完全一致 > 部分一致 > 語の網羅率の順に高い。 */
+function matchScore(title: string, query: string): number {
+  const t = normalize(title);
+  const q = normalize(query);
+  if (!q) return 0;
+  if (t === q) return 3;
+  if (t.startsWith(q)) return 2.5;
+  if (t.includes(q)) return 2;
+  const tokens = q.split(' ').filter(Boolean);
+  if (tokens.length < 2) return 0;
+  return tokens.filter((w) => t.includes(w)).length / tokens.length;
+}
 
 function loadJa(): boolean {
   try {
@@ -34,7 +49,7 @@ export function SearchPage() {
   const [tab, setTab] = useState<Tab>('results');
   const [yearFrom, setYearFrom] = useState('');
   const [yearTo, setYearTo] = useState('');
-  const [sort, setSort] = useState<SortKey>('arrival');
+  const [sort, setSort] = useState<SortKey>('match');
   const [target, setTarget] = useState<string>('all');
   const [activeQuery, setActiveQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -215,6 +230,10 @@ export function SearchPage() {
       }
       return true;
     });
+    if (sort === 'match' && !similar && activeQuery) {
+      // sort は安定ソートなので、同点は取得順のまま
+      return [...filtered].sort((a, b) => matchScore(b.title, activeQuery) - matchScore(a.title, activeQuery));
+    }
     if (sort === 'relevance') {
       return [...filtered].sort((a, b) => RELEVANCE_RANK[a.relevance] - RELEVANCE_RANK[b.relevance]);
     }
@@ -222,7 +241,7 @@ export function SearchPage() {
       return [...filtered].sort((a, b) => (b.year ?? -Infinity) - (a.year ?? -Infinity));
     }
     return filtered;
-  }, [base, yearFrom, yearTo, sort]);
+  }, [base, yearFrom, yearTo, sort, similar, activeQuery]);
 
   const renderPaper = (r: SearchResultItem, removable = false) => {
     const saved = bm.has(r);
@@ -308,6 +327,7 @@ export function SearchPage() {
           </label>
           <label>並替{' '}
             <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
+              <option value="match">検索語との一致</option>
               <option value="arrival">取得順</option>
               <option value="relevance">研究関連度</option>
               <option value="year">年（新→旧）</option>
