@@ -62,7 +62,7 @@
     linear-gradient(var(--sheet-ink),var(--sheet-ink)) 28px 34px/120px 10px no-repeat,
     repeating-linear-gradient(180deg,transparent 0 14px,var(--sheet-line) 14px 18px) 28px 70px/194px 220px no-repeat,
     var(--sheet)}
-.pr .hero-inner{max-width:1040px;margin:0 auto;padding:76px 24px 60px;display:grid;
+.pr .hero-inner{max-width:none;margin:0 auto;padding:76px 24px 60px;display:grid;
   grid-template-columns:1fr;grid-template-areas:"brand" "search";gap:32px;
   transition:padding .3s ease-out}
 .pr .brand{grid-area:brand;line-height:1}
@@ -72,7 +72,7 @@
   color:var(--text);display:inline;
   background:linear-gradient(transparent 58%,var(--accent) 58%,var(--accent) 90%,transparent 90%) no-repeat;padding:0 .06em}
 .pr .brand-sub{font-family:var(--font-en);font-weight:800;font-size:clamp(13px,1.4vw,16px);letter-spacing:.32em;text-transform:uppercase;color:var(--text-3);margin-top:16px}
-.pr .search-wrap{grid-area:search;display:flex;gap:0;max-width:640px;width:100%;border:3px solid var(--text);background:var(--surface)}
+.pr .search-wrap{grid-area:search;display:flex;gap:0;max-width:860px;width:100%;border:3px solid var(--text);background:var(--surface)}
 .pr .search-wrap input{flex:1;min-width:0;padding:14px 18px;border:none;border-radius:0;
   background:var(--surface);color:var(--text);font:inherit;font-size:16px;font-weight:700;outline:none;}
 .pr .search-wrap:focus-within{box-shadow:6px 6px 0 var(--accent)}
@@ -90,7 +90,7 @@
 .pr .searched .btn-search{padding:0 22px;font-size:15px}
 .pr .subbar{background:var(--surface);border-bottom:4px solid var(--accent);
   padding:10px 24px;font-size:14px;color:var(--text-2);}
-.pr .subbar-inner{max-width:1040px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.pr .subbar-inner{max-width:none;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .pr .subbar label{display:flex;align-items:center;gap:6px;font-weight:700}
 .pr .subbar input[type=number]{width:72px;padding:5px 6px;border:2px solid var(--border-2);border-radius:0;
   background:var(--surface);color:var(--text);font-family:var(--font-en);font-size:15px;font-weight:700;text-align:center;}
@@ -102,7 +102,7 @@
   background:var(--surface);color:var(--text);font:inherit;font-size:13px;font-weight:700;
   cursor:pointer;transition:all .15s;}
 .pr .tag:hover{border-color:var(--accent);color:#fff;background:var(--accent)}
-.pr .main{max-width:1040px;margin:0 auto;padding:0 24px 80px}
+.pr .main{max-width:none;margin:0 auto;padding:0 24px 80px}
 .pr .tabs{display:flex;gap:6px;border-bottom:4px solid var(--text);margin:32px 0 0}
 .pr .tab{padding:10px 22px 8px;background:var(--surface-2);border:none;border-radius:0;
   color:var(--text-3);font:inherit;font-size:16px;font-weight:900;letter-spacing:.04em;
@@ -149,7 +149,7 @@
 .pr .bdg-api.cn{background:#2D1F05;color:#FBBF24}
 }
 .pr .srcbar{background:var(--surface);border-bottom:1px solid var(--border);padding:8px 24px}
-.pr .srcbar-inner{max-width:1040px;margin:0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pr .srcbar-inner{max-width:none;margin:0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .pr .srcbar-inner .lbl{font-size:13px;color:var(--text-3);font-weight:700;margin-right:4px}
 .pr .src-btn{padding:4px 12px;border:2px solid var(--border-2);border-radius:0;background:var(--surface);color:var(--text-3);font:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s}
 .pr .src-btn:hover{border-color:var(--text);color:var(--text)}
@@ -330,7 +330,7 @@
 
 /* ===== アプリ共通（全画面に広げた paper-researcher 風UI） ===== */
 .pr .appbar{background:#111;color:#f2f2f2;border-bottom:1px solid var(--border)}
-.pr .appbar-inner{max-width:1040px;margin:0 auto;padding:0 24px;display:flex;align-items:stretch;gap:2px;min-height:50px;flex-wrap:wrap}
+.pr .appbar-inner{max-width:none;margin:0 auto;padding:0 24px;display:flex;align-items:stretch;gap:2px;min-height:50px;flex-wrap:wrap}
 .pr .appbar .logo{display:flex;align-items:center;margin-right:20px;padding:0 16px;background:var(--accent);color:#fff;
   font-family:var(--font-en);font-weight:900;font-size:21px;letter-spacing:-.02em;text-decoration:none}
 .pr .appbar .logo:hover{color:#fff}
