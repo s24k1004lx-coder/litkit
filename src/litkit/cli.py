@@ -562,6 +562,7 @@ def ui(
     port: int = typer.Option(7777, help="ポート番号"),
     no_browser: bool = typer.Option(False, "--no-browser", help="ブラウザを自動で開かない"),
     tunnel: bool = typer.Option(False, "--tunnel", help="Cloudflare Tunnel で外部から開けるURLを作る（要 cloudflared と LITKIT_PASSWORD）"),
+    reload: bool = typer.Option(True, "--reload/--no-reload", help="コード変更で自動再起動する（開発用。常時起動では --no-reload）"),
 ):
     """Web UIを起動する。"""
     import os
@@ -623,7 +624,7 @@ def ui(
             webbrowser.open(f"http://localhost:{port}")
     tunnel_proc = _start_tunnel(host, port) if tunnel else None
     try:
-        uvicorn.run("litkit.api:app", host=host, port=port, reload=True)
+        uvicorn.run("litkit.api:app", host=host, port=port, reload=reload)
     finally:
         if tunnel_proc is not None:
             tunnel_proc.terminate()

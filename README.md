@@ -70,6 +70,22 @@ uv run litkit ui
 
 Web UI 全体が paper-researcher 由来のデザイン（黒帯のナビ、マーカー風タイトル、太枠カード）。スタイルは `web/src/styles/paper.css` に集約（`.pr` 配下）。
 
+### 常に使えるようにする（Tailscale ＋ 自動起動）
+
+PC にログインしたら自動で litkit が立ち上がり、スマホから**固定のURL**で開けるようにする。
+
+1. PC とスマホに [Tailscale](https://tailscale.com/) を入れ、同じアカウントでログインする。
+2. PC で自動起動を登録する（管理者権限は不要）。
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\install-autostart.ps1
+   ```
+   以後、Windows にログインするたびに `litkit ui --tailscale` が裏で起動する（ログは `data/ui.log`）。解除は `-Remove` を付けて同じコマンド。
+3. スマホで `http://PCのTailscale名:7777` を開く。名前は Tailscale アプリの PC の欄、または `tailscale status` に出る（IP `100.x.y.z` でも開ける。どちらも変わらない）。
+
+- 開けるのは同じ Tailscale アカウントの端末だけ。`.env` の `LITKIT_PASSWORD` を設定してあれば、画面でのログインも必要。
+- PC の電源が入っていて、**スリープしていない**間だけ使える。スリープさせない設定は自分で行う（電源オプションで「スリープなし」、または `powercfg /change standby-timeout-ac 0`）。
+- 初回は Windows ファイアウォールの許可ダイアログが出ることがある（プライベートネットワークで許可）。
+
 ### 外出先から使う（Cloudflare Tunnel ＋ パスワード）
 
 アカウントやドメインなしで、スマホから開けるURLを作れる。**パスワード認証が必須**（未設定だと起動を拒否する）。

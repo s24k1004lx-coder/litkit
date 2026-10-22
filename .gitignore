@@ -5,6 +5,7 @@ literature/inbox/
 # データベース・キャッシュ
 data/*.db
 data/cache/
+data/*.log
 
 # 環境変数
 .env
