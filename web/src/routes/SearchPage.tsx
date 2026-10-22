@@ -1,8 +1,7 @@
-import { useState, useCallback, useEffect } from 'react';
-import { Search, X, BookOpen } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Search, X, BookOpen, Loader2 } from 'lucide-react';
 import { api, type SearchResultItem } from '../lib/api';
 import { Badge } from '../components/Badge';
-import { Skeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
 
 export function SearchPage() {
@@ -12,22 +11,47 @@ export function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
+  const [sourcesLoaded, setSourcesLoaded] = useState<string[]>([]);
+  const abortRef = useRef<(() => void) | null>(null);
 
-  const doSearch = useCallback(async () => {
+  const doSearch = useCallback(() => {
     if (!query.trim()) return;
+
+    abortRef.current?.();
+
     setLoading(true);
     setSearched(true);
     setSelected(null);
-    try {
-      const data = await api.search(query, 20);
-      setResults(data.results);
-      setEnQuery(data.en_query);
-    } catch {
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
+    setResults([]);
+    setEnQuery(null);
+    setSourcesLoaded([]);
+
+    const seenKeys = new Set<string>();
+
+    const abort = api.searchStream(query, 20, {
+      onMeta: (data) => setEnQuery(data.en_query),
+      onResults: (data) => {
+        const newItems = data.items.filter((item) => {
+          const key = item.doi || `${item.title.slice(0, 50)}_${item.year}`;
+          if (seenKeys.has(key)) return false;
+          seenKeys.add(key);
+          return true;
+        });
+        if (newItems.length > 0) {
+          setResults((prev) => [...prev, ...newItems]);
+        }
+        setSourcesLoaded((prev) => [...prev, data.source]);
+      },
+      onDone: () => setLoading(false),
+      onError: () => setLoading(false),
+    });
+
+    abortRef.current = abort;
   }, [query]);
+
+  useEffect(() => {
+    return () => abortRef.current?.();
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -104,8 +128,14 @@ export function SearchPage() {
       <div style={{ display: 'flex', gap: 0 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           {loading && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Skeleton height={72} count={5} />
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 16px', fontSize: 12, color: 'var(--text-muted)',
+              borderBottom: '1px solid var(--border)',
+            }}>
+              <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+              <span>検索中… {sourcesLoaded.length > 0 && `(${sourcesLoaded.length} ソース完了)`}</span>
+              <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
             </div>
           )}
 
@@ -117,7 +147,7 @@ export function SearchPage() {
             />
           )}
 
-          {!loading && results.map((r, i) => (
+          {results.map((r, i) => (
             <div
               key={i}
               onClick={() => setSelected(i)}

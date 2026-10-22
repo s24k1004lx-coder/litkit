@@ -21,7 +21,7 @@ class NDLAdapter(SourceAdapter):
             "cnt": limit,
             "dpid": "iss-ndl-opac",
         }
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(self.BASE, params=params)
             resp.raise_for_status()
 
@@ -61,7 +61,11 @@ class NDLAdapter(SourceAdapter):
         url = link_el.get_text().strip() if link_el else None
 
         desc_el = item.find("description")
-        abstract = desc_el.get_text().strip() if desc_el else None
+        abstract = None
+        if desc_el:
+            raw = desc_el.get_text().strip()
+            if raw:
+                abstract = BeautifulSoup(raw, "html.parser").get_text().strip()
 
         return SearchResult(
             title=title,

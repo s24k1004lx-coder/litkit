@@ -24,7 +24,7 @@ class OpenAlexAdapter(SourceAdapter):
 
     async def search(self, query: str, limit: int = 10) -> list[SearchResult]:
         params = {**self._params(), "search": query, "per_page": limit}
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(self.BASE, params=params)
             resp.raise_for_status()
         results = resp.json().get("results", [])
@@ -33,7 +33,7 @@ class OpenAlexAdapter(SourceAdapter):
     async def fetch_metadata(self, identifier: str) -> Optional[SearchResult]:
         doi = identifier.strip().removeprefix("https://doi.org/")
         url = f"{self.BASE}/https://doi.org/{doi}"
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(url, params=self._params())
             if resp.status_code == 404:
                 return None

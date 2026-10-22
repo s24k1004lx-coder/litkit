@@ -28,7 +28,7 @@ class SemanticScholarAdapter(SourceAdapter):
             "limit": limit,
             "fields": "title,authors,year,venue,externalIds,abstract,isOpenAccess,openAccessPdf",
         }
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 f"{self.BASE}/search",
                 params=params,
@@ -41,7 +41,7 @@ class SemanticScholarAdapter(SourceAdapter):
         return [self._parse(item) for item in data]
 
     async def fetch_metadata(self, identifier: str) -> Optional[SearchResult]:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 f"{self.BASE}/{identifier}",
                 params={"fields": "title,authors,year,venue,externalIds,abstract,isOpenAccess,openAccessPdf"},

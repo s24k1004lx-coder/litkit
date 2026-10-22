@@ -22,7 +22,7 @@ class ArxivAdapter(SourceAdapter):
             "max_results": limit,
             "sortBy": "relevance",
         }
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(self.BASE, params=params)
             resp.raise_for_status()
 
@@ -35,7 +35,7 @@ class ArxivAdapter(SourceAdapter):
         if "arxiv.org" in arxiv_id:
             arxiv_id = arxiv_id.rstrip("/").split("/")[-1]
         params = {"id_list": arxiv_id}
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(self.BASE, params=params)
             resp.raise_for_status()
 

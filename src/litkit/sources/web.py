@@ -19,7 +19,7 @@ class WebAdapter(SourceAdapter):
 
     async def fetch_metadata(self, identifier: str) -> Optional[SearchResult]:
         """URLからページのタイトルと概要を取得する。"""
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
             resp = await client.get(identifier)
             resp.raise_for_status()
 

@@ -21,7 +21,7 @@ class JStageAdapter(SourceAdapter):
             "count": limit,
             "service": 3,  # 3 = article
         }
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(self.BASE, params=params)
             resp.raise_for_status()
 
@@ -32,7 +32,7 @@ class JStageAdapter(SourceAdapter):
     async def fetch_metadata(self, identifier: str) -> Optional[SearchResult]:
         doi = identifier.strip().removeprefix("https://doi.org/")
         params = {"doi": doi, "service": 3}
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(self.BASE, params=params)
             resp.raise_for_status()
 

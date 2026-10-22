@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import date
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.responses import StreamingResponse
 
 from .config import load_research_context, CARDS_DIR, ROOT
 from .card import (
@@ -23,6 +25,7 @@ from .claims import load_claims, check_claims
 from .thesis import check_all
 from .report import generate_weekly_report
 from .cite import generate_reference_list
+from .translate import translate_batch_to_ja
 
 app = FastAPI(title="litkit API", version="0.1.0")
 
@@ -138,11 +141,65 @@ def update_memo(card_id: str, data: MemoUpdate):
     return {"ok": True}
 
 
+def _result_to_dict(r: SearchResult, l1_override: str | None = None) -> dict:
+    from .cli import _make_card_id
+    rel = _assess_relevance(f"{r.title} {r.abstract or ''}")
+    cid = _make_card_id(r)
+    l1 = l1_override or r.l1
+    if not l1 and r.abstract:
+        l1 = r.abstract[:120].replace("\n", " ")
+    return {
+        "title": r.title,
+        "authors": r.authors,
+        "year": r.year,
+        "venue": r.venue,
+        "doi": r.doi,
+        "url": r.url,
+        "source": r.source.value,
+        "lang": r.lang.value,
+        "abstract": r.abstract,
+        "pdf_url": r.pdf_url,
+        "is_open_access": r.is_open_access,
+        "availability": r.availability,
+        "relevance": rel,
+        "has_card": card_exists(cid),
+        "l1": l1,
+    }
+
+
+def _is_english(text: str) -> bool:
+    """テキストがASCII主体（＝英語）かどうか判定する。"""
+    if not text:
+        return False
+    ascii_chars = sum(1 for c in text if ord(c) < 128)
+    return ascii_chars / len(text) > 0.8
+
+
+async def _translate_l1_batch(results: list[SearchResult]) -> list[str | None]:
+    """英語アブストラクトをまとめて日本語に翻訳する。"""
+    en_indices = []
+    snippets = []
+    for i, r in enumerate(results):
+        if r.abstract and not r.l1 and _is_english(r.abstract[:200]):
+            en_indices.append(i)
+            snippets.append(r.abstract[:200].replace("\n", " "))
+
+    translations: list[str | None] = [None] * len(results)
+    if snippets:
+        batch_result = await translate_batch_to_ja(snippets)
+        for idx, en_i in enumerate(en_indices):
+            t = batch_result[idx]
+            if t:
+                translations[en_i] = t[:120]
+    return translations
+
+
+def _dedup_key(r: SearchResult) -> str:
+    return r.doi or f"{r.title[:50]}_{r.year}"
+
+
 @app.get("/api/search")
 async def api_search(q: str, limit: int = 10):
-    results = []
-    tasks_list = []
-
     ctx = load_research_context()
     en_query = None
     if any(ord(c) > 0x3000 for c in q):
@@ -150,6 +207,7 @@ async def api_search(q: str, limit: int = 10):
         if en_keywords:
             en_query = " ".join(en_keywords[:3])
 
+    tasks_list = []
     for adapter_cls in ALL_ADAPTERS:
         adapter = adapter_cls()
         tasks_list.append(_safe_search_api(adapter, q, limit))
@@ -158,37 +216,76 @@ async def api_search(q: str, limit: int = 10):
 
     all_results = await asyncio.gather(*tasks_list)
 
-    merged: dict[str, dict] = {}
+    flat: list[SearchResult] = []
+    seen_keys: set[str] = set()
     for batch in all_results:
         for r in batch:
-            key = r.doi or f"{r.title[:50]}_{r.year}"
-            if key not in merged:
-                rel = _assess_relevance(f"{r.title} {r.abstract or ''}")
-                from .cli import _make_card_id
-                cid = _make_card_id(r)
-                merged[key] = {
-                    "title": r.title,
-                    "authors": r.authors,
-                    "year": r.year,
-                    "venue": r.venue,
-                    "doi": r.doi,
-                    "url": r.url,
-                    "source": r.source.value,
-                    "lang": r.lang.value,
-                    "abstract": r.abstract,
-                    "pdf_url": r.pdf_url,
-                    "is_open_access": r.is_open_access,
-                    "availability": r.availability,
-                    "relevance": rel,
-                    "has_card": card_exists(cid),
-                    "l1": r.l1 or (r.abstract[:120] if r.abstract else None),
-                }
+            key = _dedup_key(r)
+            if key not in seen_keys:
+                seen_keys.add(key)
+                flat.append(r)
+
+    translations = await _translate_l1_batch(flat)
+    merged = [_result_to_dict(r, translations[i]) for i, r in enumerate(flat)]
 
     return {
-        "results": list(merged.values()),
+        "results": merged,
         "en_query": en_query,
         "count": len(merged),
     }
+
+
+@app.get("/api/search/stream")
+async def api_search_stream(q: str, limit: int = 10):
+    """SSEストリーミング検索。ソースごとに結果を逐次返す。"""
+    ctx = load_research_context()
+    en_query = None
+    if any(ord(c) > 0x3000 for c in q):
+        en_keywords = ctx.get("keywords_en", [])
+        if en_keywords:
+            en_query = " ".join(en_keywords[:3])
+
+    tasks: list[tuple[str, asyncio.Task]] = []
+    for adapter_cls in ALL_ADAPTERS:
+        adapter = adapter_cls()
+        task = asyncio.create_task(_safe_search_api(adapter, q, limit))
+        tasks.append((adapter.name, task))
+        if en_query:
+            task_en = asyncio.create_task(_safe_search_api(adapter, en_query, limit))
+            tasks.append((f"{adapter.name}(en)", task_en))
+
+    async def event_stream():
+        if en_query:
+            yield f"event: meta\ndata: {json.dumps({'en_query': en_query}, ensure_ascii=False)}\n\n"
+
+        seen: set[str] = set()
+        pending = {t: name for name, t in tasks}
+
+        while pending:
+            done, _ = await asyncio.wait(
+                pending.keys(), timeout=0.1, return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in done:
+                source_name = pending.pop(task)
+                batch = task.result()
+                new_results = []
+                for r in batch:
+                    key = _dedup_key(r)
+                    if key not in seen:
+                        seen.add(key)
+                        new_results.append(r)
+                if new_results:
+                    translations = await _translate_l1_batch(new_results)
+                    items = [_result_to_dict(r, translations[i]) for i, r in enumerate(new_results)]
+                    yield f"event: results\ndata: {json.dumps({'source': source_name, 'items': items}, ensure_ascii=False)}\n\n"
+
+        yield f"event: done\ndata: {json.dumps({'count': len(seen)})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 async def _safe_search_api(adapter, query, limit):

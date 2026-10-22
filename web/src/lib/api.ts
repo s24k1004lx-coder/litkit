@@ -102,6 +102,61 @@ export interface TimelineEntry {
   type: string;
 }
 
+export interface StreamCallbacks {
+  onMeta?: (data: { en_query: string }) => void;
+  onResults?: (data: { source: string; items: SearchResultItem[] }) => void;
+  onDone?: (data: { count: number }) => void;
+  onError?: (error: Error) => void;
+}
+
+function searchStream(q: string, limit: number, callbacks: StreamCallbacks): () => void {
+  const url = `${BASE}/search/stream?q=${encodeURIComponent(q)}&limit=${limit}`;
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const resp = await fetch(url, { signal: controller.signal });
+      if (!resp.ok || !resp.body) {
+        callbacks.onError?.(new Error(`API error: ${resp.status}`));
+        return;
+      }
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+
+        for (const part of parts) {
+          const lines = part.split('\n');
+          let eventType = '';
+          let data = '';
+          for (const line of lines) {
+            if (line.startsWith('event: ')) eventType = line.slice(7);
+            else if (line.startsWith('data: ')) data = line.slice(6);
+          }
+          if (!data) continue;
+          const parsed = JSON.parse(data);
+          if (eventType === 'meta') callbacks.onMeta?.(parsed);
+          else if (eventType === 'results') callbacks.onResults?.(parsed);
+          else if (eventType === 'done') callbacks.onDone?.(parsed);
+        }
+      }
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') {
+        callbacks.onError?.(e as Error);
+      }
+    }
+  })();
+
+  return () => controller.abort();
+}
+
 export const api = {
   getStats: () => get<Stats>('/stats'),
   getCards: (params?: Record<string, string>) => {
@@ -111,6 +166,7 @@ export const api = {
   getCard: (id: string) => get<CardMeta>(`/cards/${id}`),
   updateMemo: (id: string, content: string) => put<{ ok: boolean }>(`/cards/${id}/memo`, { content }),
   search: (q: string, limit = 10) => get<SearchResponse>(`/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+  searchStream,
   getClaims: () => get<Claim[]>('/claims'),
   checkClaims: () => get<unknown[]>('/claims/check'),
   check: () => get<Record<string, string[]>>('/check'),

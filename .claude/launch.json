@@ -4,8 +4,14 @@
     {
       "name": "litkit-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": ["--prefix", "web", "run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "litkit-ui",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "litkit", "ui"],
+      "port": 7777
     }
   ]
 }

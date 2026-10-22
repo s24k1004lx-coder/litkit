@@ -15,7 +15,7 @@ class CrossRefAdapter(SourceAdapter):
     BASE = "https://api.crossref.org/works"
 
     async def search(self, query: str, limit: int = 10) -> list[SearchResult]:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 self.BASE,
                 params={
@@ -31,7 +31,7 @@ class CrossRefAdapter(SourceAdapter):
 
     async def fetch_metadata(self, identifier: str) -> Optional[SearchResult]:
         doi = identifier.strip().removeprefix("https://doi.org/")
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(f"{self.BASE}/{doi}")
             if resp.status_code == 404:
                 return None

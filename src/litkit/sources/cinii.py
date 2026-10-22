@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from typing import Optional
+import re
+
 import httpx
 
 from .base import SourceAdapter
@@ -20,7 +22,7 @@ class CiNiiAdapter(SourceAdapter):
             "count": limit,
             "format": "json",
         }
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(self.BASE, params=params)
             resp.raise_for_status()
         data = resp.json()
@@ -32,7 +34,7 @@ class CiNiiAdapter(SourceAdapter):
             url = identifier.rstrip("/") + ".json"
         else:
             return None
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(url)
             if resp.status_code == 404:
                 return None
@@ -69,6 +71,8 @@ class CiNiiAdapter(SourceAdapter):
         description = item.get("description", "")
         if isinstance(description, list):
             description = " ".join(description)
+        if description:
+            description = re.sub(r"<[^>]+>", "", description).strip()
 
         naid = ""
         if url and "cir.nii.ac.jp" in url:
