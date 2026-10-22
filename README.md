@@ -70,6 +70,22 @@ uv run litkit ui
 
 Web UI 全体が paper-researcher 由来のデザイン（黒帯のナビ、マーカー風タイトル、太枠カード）。スタイルは `web/src/styles/paper.css` に集約（`.pr` 配下）。
 
+### スマホから使う
+
+画面はスマホ幅に対応している。PC側でUIを起動しておき、スマホのブラウザから開く（PCが起動している間だけ使える）。
+
+| 場所 | PCでの起動 | スマホで開くURL |
+|---|---|---|
+| 同じWi-Fi内 | `uv run litkit ui --lan` | 起動時に表示される `http://PCのIP:7777` |
+| 外出先から | `uv run litkit ui --tailscale` | `http://PCのTailscale IP:7777`（または MagicDNS 名） |
+
+外出先から使うには [Tailscale](https://tailscale.com/) を PC とスマホの両方に入れ、同じアカウントでログインしておく。`--tailscale` は Tailscale のアドレスだけで待ち受けるため、同じ tailnet の端末以外からは開けない（`--lan` は同じネットワークの全端末から開ける）。
+
+- **認証はない。** 信頼できるネットワーク（自分のTailscale・自宅Wi-Fi）でだけ使い、ルーターのポート開放などでインターネットへ直接公開しないこと。
+- AI要約を押すと、PC の Claude Code の利用枠を消費する。
+- 初回は Windows ファイアウォールの許可ダイアログが出ることがある（プライベートネットワークで許可）。
+- ホーム画面に追加すると、アプリのように開ける（iOS: 共有 → ホーム画面に追加）。
+
 **文献検索画面**（カード化前の候補を絞るための機能。ここで得た要約・訳は文献カードには保存されない）
 
 - 検索対象ソースの選択（OpenAlex / J-STAGE / CiNii / 国立国会図書館サーチ / Crossref / Semantic Scholar / arXiv。「全て」で横断）、年範囲（ソース側でも絞り込み）、ページ送り、ソースごとの取得失敗の表示

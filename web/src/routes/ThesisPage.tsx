@@ -32,7 +32,7 @@ export function ThesisPage() {
                 根拠カバー率 {coverage}%（{supported}/{total} 件）
               </span>
             </div>
-            <table className="tbl" style={{ marginTop: 0 }}>
+            <div className="tbl-wrap"><table className="tbl" style={{ marginTop: 0 }}>
               <thead>
                 <tr>
                   <th style={{ width: 70 }}>ID</th>
@@ -64,7 +64,7 @@ export function ThesisPage() {
                   );
                 })}
               </tbody>
-            </table>
+            </table></div>
           </>
         )}
       </div>

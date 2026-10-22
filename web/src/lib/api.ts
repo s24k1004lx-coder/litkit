@@ -1,8 +1,14 @@
 const BASE = '/api';
 
+/** FastAPI の HTTPException は {detail: "..."} で理由を返すので、あれば画面に出せるよう取り出す */
+async function errorFrom(res: Response): Promise<Error> {
+  const detail = await res.json().then((d) => d?.detail, () => null);
+  return new Error(typeof detail === 'string' ? detail : `API error: ${res.status}`);
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) throw await errorFrom(res);
   return res.json();
 }
 
@@ -12,11 +18,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) {
-    // FastAPI の HTTPException は {detail: "..."} で理由を返す
-    const detail = await res.json().then((d) => d?.detail, () => null);
-    throw new Error(typeof detail === 'string' ? detail : `API error: ${res.status}`);
-  }
+  if (!res.ok) throw await errorFrom(res);
   return res.json();
 }
 

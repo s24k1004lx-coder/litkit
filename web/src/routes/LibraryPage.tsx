@@ -66,7 +66,7 @@ export function LibraryPage() {
                 ))}
               </div>
             ) : (
-              <table className="tbl">
+              <div className="tbl-wrap"><table className="tbl">
                 <thead>
                   <tr>
                     <th>タイトル</th>
@@ -90,7 +90,7 @@ export function LibraryPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </>
         )}

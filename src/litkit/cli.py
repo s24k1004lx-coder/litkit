@@ -544,18 +544,61 @@ def reindex():
     console.print(f"[green]{count} 件のカードを索引化しました。[/green]")
 
 
+def _tailscale_ip() -> Optional[str]:
+    """Tailscale の IPv4 アドレス。入っていない・未ログインなら None。"""
+    try:
+        out = subprocess.run(["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    ip = out.stdout.strip().splitlines()[0] if out.returncode == 0 and out.stdout.strip() else ""
+    return ip or None
+
+
 @app.command()
-def ui():
+def ui(
+    host: str = typer.Option("127.0.0.1", help="待ち受けアドレス。スマホ等から使うときは --lan か --tailscale が簡単"),
+    lan: bool = typer.Option(False, "--lan", help="同じネットワーク内の端末から開けるようにする（0.0.0.0 で待ち受け）"),
+    tailscale: bool = typer.Option(False, "--tailscale", help="Tailscale のアドレスだけで待ち受ける（外出先のスマホから、同じ tailnet の端末のみ）"),
+    port: int = typer.Option(7777, help="ポート番号"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="ブラウザを自動で開かない"),
+):
     """Web UIを起動する。"""
     import uvicorn
     web_dist = Path(__file__).resolve().parent.parent.parent / "web" / "dist"
     if not web_dist.exists():
         console.print("[yellow]web/dist が見つかりません。cd web && npm run build を先に実行してください。[/yellow]")
         raise typer.Exit(1)
+
+    if tailscale:
+        ts_ip = _tailscale_ip()
+        if not ts_ip:
+            console.print("[red]Tailscale のアドレスを取得できません。Tailscale をインストールしてログインしているか確認してください。[/red]")
+            raise typer.Exit(1)
+        host = ts_ip
+    elif lan:
+        host = "0.0.0.0"
+
     console.print("[bold]litkit Web UI を起動します…[/bold]")
-    console.print("  → http://localhost:7777")
-    webbrowser.open("http://localhost:7777")
-    uvicorn.run("litkit.api:app", host="127.0.0.1", port=7777, reload=True)
+    if host in ("127.0.0.1", "localhost"):
+        console.print(f"  → http://localhost:{port}")
+        if not no_browser:
+            webbrowser.open(f"http://localhost:{port}")
+    else:
+        shown = host
+        if host == "0.0.0.0":
+            import socket
+            try:
+                shown = socket.gethostbyname(socket.gethostname())
+            except OSError:
+                shown = "<このPCのIP>"
+        console.print(f"  → http://localhost:{port}（このPC）/ http://{shown}:{port}（スマホなど）")
+        console.print(
+            "[yellow]  ※ 認証はありません。VPN（Tailscale）や自宅Wi-Fiなど、信頼できるネットワークでのみ使ってください。"
+            "AI要約を押すと、このPCの Claude Code の利用枠を消費します。[/yellow]"
+        )
+        if not no_browser:
+            webbrowser.open(f"http://localhost:{port}")
+    uvicorn.run("litkit.api:app", host=host, port=port, reload=True)
 
 
 if __name__ == "__main__":

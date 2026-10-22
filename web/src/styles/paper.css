@@ -415,3 +415,40 @@
   .pr .page-head{padding-top:28px}
 }
 .pr .dot-other{background:var(--text-3)}
+
+/* ===== スマホ向けの調整 ===== */
+.pr .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.pr .tbl-wrap .tbl{min-width:560px}
+@media(max-width:850px){
+  /* iOS は 16px 未満の入力欄にフォーカスすると画面が拡大されるため */
+  .pr input,.pr select,.pr textarea{font-size:16px}
+  .pr .subbar input[type=number]{font-size:16px;width:80px}
+  /* ナビは折り返さず1行で横スクロール */
+  .pr .appbar-inner{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .pr .appbar-inner::-webkit-scrollbar{display:none}
+  .pr .appbar-inner{padding:0}
+  .pr .appbar .logo{flex-shrink:0;margin-right:4px;padding:0 9px;font-size:16px}
+  .pr .appbar .nav{flex-shrink:0;padding:0 5px;font-size:12.5px;letter-spacing:0;white-space:nowrap}
+  /* 検索後に固定表示するバーは、検索ボックスだけにして高さを抑える */
+  .pr .searched .brand{display:none}
+  .pr .searched .hero-inner{grid-template-columns:1fr;grid-template-areas:"search";padding:8px 12px}
+  /* タップしやすい大きさ */
+  .pr .act,.pr .src-btn,.pr .tag,.pr .d-link,.pr .d-cite-tab{min-height:38px}
+  .pr .p-actions .act{flex:1 1 auto;text-align:center}
+  .pr .srcbar-inner{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .pr .srcbar-inner::-webkit-scrollbar{display:none}
+  .pr .src-btn,.pr .srcbar-inner .lbl{flex-shrink:0;white-space:nowrap}
+  .pr .tab{flex:1 1 0;padding:10px 8px 8px}
+  .pr .card-head{padding:16px 16px;border-left-width:8px}
+  .pr .card-body,.pr .report{padding:16px}
+  .pr .page-title{font-size:30px}
+  .pr .d-title{font-size:20px}
+  .pr .panel{width:100vw}
+  .pr .stats{grid-template-columns:1fr 1fr;gap:10px}
+  .pr .stat{padding:10px 12px 12px}
+  .pr .stat-value{font-size:32px}
+  .pr .main{padding:0 14px 60px}
+  .pr .subbar{padding:8px 14px}
+  .pr .srcbar{padding:6px 14px}
+  .pr .p-title{font-size:17px}
+}
