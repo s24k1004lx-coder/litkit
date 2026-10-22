@@ -1,0 +1,53 @@
+import { useEffect, useState } from 'react';
+import { isJa } from '../lib/paperUtils';
+import { cachedTranslation, translateToJa } from '../lib/translate';
+
+interface Props {
+  text: string;
+  enabled: boolean;
+  /** 翻訳した場合に「原文を見る」を添える（本文向け） */
+  showOriginal?: boolean;
+}
+
+interface Outcome {
+  src: string;
+  ja?: string;
+  failed?: boolean;
+}
+
+/** enabled かつ日本語でない文を日本語訳で表示する。翻訳中・失敗時は原文のまま出す。 */
+export function TranslatedText({ text, enabled, showOriginal = false }: Props) {
+  const needs = enabled && text.trim() !== '' && !isJa(text);
+  const [outcome, setOutcome] = useState<Outcome>({ src: '' });
+
+  useEffect(() => {
+    if (!needs || cachedTranslation(text)) return;
+    let alive = true;
+    translateToJa(text).then(
+      (ja) => alive && setOutcome({ src: text, ja }),
+      () => alive && setOutcome({ src: text, failed: true }),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [text, needs]);
+
+  if (!needs) return <>{text}</>;
+
+  const current = outcome.src === text ? outcome : undefined;
+  const ja = cachedTranslation(text) ?? current?.ja;
+  const failed = !ja && current?.failed;
+  return (
+    <>
+      <span style={{ opacity: ja ? 1 : 0.6 }}>{ja ?? text}</span>
+      {!ja && !failed && <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}> （翻訳中…）</span>}
+      {failed && <span style={{ fontSize: 11, color: 'var(--risk)' }}> （翻訳に失敗しました）</span>}
+      {showOriginal && ja && (
+        <details style={{ marginTop: 6 }}>
+          <summary style={{ fontSize: 11, color: 'var(--text-subtle)', cursor: 'pointer' }}>原文を見る</summary>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{text}</p>
+        </details>
+      )}
+    </>
+  );
+}

@@ -68,6 +68,17 @@ uv run litkit ui
 # → http://localhost:7777
 ```
 
+**文献検索画面**（カード化前の候補を絞るための機能。ここで得た要約・訳は文献カードには保存されない）
+
+- 年範囲・並べ替え（取得順／研究関連度／年）・ソース別の絞り込み
+- 詳細パネル: Semantic Scholar の TLDR、構造化要約（要旨の文を目的／手法／結果／結論に振り分け）、
+  要旨がない論文は PDF 本文から要旨を抽出、日本語訳トグル、AI要約（`claude -p` を使用）、APA/BibTeX の引用コピー、メモ
+- 類似論文（OpenAlex の related works）
+- ブックマーク（ブラウザの localStorage に保存）と Markdown エクスポート
+
+AI要約には Claude Code のログイン済み環境（`claude` コマンド）が必要で、押したときだけ利用枠を消費する。
+`abstract_only` の扱い（CLAUDE.md の運用ルール7）は変わらない。検索画面の内容は根拠IDを持たないため、論文の内容として記述する際は `litkit add` でカード化すること。
+
 ### Claude Code スラッシュコマンド
 
 | コマンド | 役割 |

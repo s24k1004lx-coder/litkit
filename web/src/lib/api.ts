@@ -12,7 +12,11 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) {
+    // FastAPI の HTTPException は {detail: "..."} で理由を返す
+    const detail = await res.json().then((d) => d?.detail, () => null);
+    throw new Error(typeof detail === 'string' ? detail : `API error: ${res.status}`);
+  }
   return res.json();
 }
 
@@ -175,4 +179,19 @@ export const api = {
   getTags: () => get<TagCount[]>('/tags'),
   getTimeline: () => get<TimelineEntry[]>('/timeline'),
   reindex: () => post<{ indexed: number }>('/reindex'),
+
+  // 検索結果のプレビュー補助（カード化前の参考情報）
+  previewAbstract: (urls: string[]) =>
+    post<{ abstract: string; abstract_source: string; pdf_url: string }>('/preview/abstract', { urls }),
+  previewEnrich: (title: string, doi?: string | null) =>
+    get<{ tldr: string | null; abstract: string | null }>(
+      `/preview/enrich?title=${encodeURIComponent(title)}${doi ? `&doi=${encodeURIComponent(doi)}` : ''}`,
+    ),
+  previewSimilar: (title: string, doi?: string | null) =>
+    get<{ results: SearchResultItem[] }>(
+      `/preview/similar?title=${encodeURIComponent(title)}${doi ? `&doi=${encodeURIComponent(doi)}` : ''}`,
+    ),
+  previewSummarize: (title: string, abstract: string, urls: string[]) =>
+    post<{ summary: string }>('/preview/summarize', { title, abstract, urls }),
+  previewTranslate: (text: string) => post<{ text: string }>('/preview/translate', { text }),
 };

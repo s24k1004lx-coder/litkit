@@ -26,6 +26,7 @@ from .thesis import check_all
 from .report import generate_weekly_report
 from .cite import generate_reference_list
 from .translate import translate_batch_to_ja
+from . import preview
 
 app = FastAPI(title="litkit API", version="0.1.0")
 
@@ -293,6 +294,63 @@ async def _safe_search_api(adapter, query, limit):
         return await adapter.search(query, limit)
     except Exception:
         return []
+
+
+class AbstractRequest(BaseModel):
+    urls: list[str]
+
+
+class SummarizeRequest(BaseModel):
+    title: str
+    abstract: str = ""
+    urls: list[str] = []
+
+
+class TranslateRequest(BaseModel):
+    text: str
+
+
+@app.post("/api/preview/abstract")
+async def api_preview_abstract(req: AbstractRequest):
+    """要旨が取れなかった論文のPDF本文から要旨を抜き出す。"""
+    found = await preview.abstract_from_pdf(req.urls)
+    if not found:
+        raise HTTPException(404, "PDFから要旨を取得できませんでした")
+    return found
+
+
+@app.get("/api/preview/enrich")
+async def api_preview_enrich(title: str, doi: str | None = None):
+    try:
+        return await preview.semantic_scholar_enrich(doi, title)
+    except preview.PreviewError as e:
+        raise HTTPException(e.code, str(e))
+
+
+@app.get("/api/preview/similar")
+async def api_preview_similar(title: str, doi: str | None = None):
+    try:
+        found = await preview.similar_works(doi, title)
+    except Exception:
+        raise HTTPException(502, "関連論文の取得に失敗しました")
+    return {"results": [_result_to_dict(r) for r in found]}
+
+
+@app.post("/api/preview/summarize")
+async def api_preview_summarize(req: SummarizeRequest):
+    try:
+        return {"summary": await preview.ai_summary(req.title, req.abstract, req.urls)}
+    except preview.PreviewError as e:
+        raise HTTPException(e.code, str(e))
+
+
+@app.post("/api/preview/translate")
+async def api_preview_translate(req: TranslateRequest):
+    text = req.text[:6000]
+    translated = await preview.translate_long(text)
+    if translated is None:
+        raise HTTPException(502, "翻訳に失敗しました")
+    return {"text": translated}
 
 
 @app.get("/api/claims")
