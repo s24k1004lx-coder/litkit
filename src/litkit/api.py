@@ -7,11 +7,11 @@ import json
 from datetime import date
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from starlette.responses import StreamingResponse
+from starlette.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from .config import load_research_context, CARDS_DIR, ROOT
 from .card import (
@@ -26,7 +26,7 @@ from .thesis import check_all
 from .report import generate_weekly_report
 from .cite import generate_reference_list
 from .translate import translate_batch_to_ja
-from . import preview
+from . import auth, preview
 
 app = FastAPI(title="litkit API", version="0.1.0")
 
@@ -36,6 +36,71 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """LITKIT_PASSWORD が設定されていれば /api/ を保護する。画面本体(静的ファイル)はログイン画面のため公開。"""
+    pw = auth.password()
+    if not pw:
+        # パスワード無しでトンネル経由の公開を許さない（Cloudflare を通ったリクエストは拒否）
+        if auth.is_proxied_by_cloudflare(request):
+            return PlainTextResponse(
+                "認証が設定されていないため、外部からのアクセスは拒否しています。"
+                ".env に LITKIT_PASSWORD を設定して litkit を再起動してください。",
+                status_code=403,
+            )
+        return await call_next(request)
+
+    path = request.url.path
+    # 自動生成のAPIドキュメントも /api/ の外にあるので、まとめて保護する
+    protected = (path.startswith("/api/") and not path.startswith("/api/auth/")) or path in {"/docs", "/redoc", "/openapi.json"}
+    if protected:
+        if not auth.verify_token(pw, request.cookies.get(auth.COOKIE)):
+            return JSONResponse({"detail": "ログインが必要です"}, status_code=401)
+    return await call_next(request)
+
+
+class LoginRequest(BaseModel):
+    password: str
+
+
+@app.get("/api/auth/status")
+def auth_status(request: Request):
+    pw = auth.password()
+    return {
+        "required": bool(pw),
+        "authenticated": (not pw) or auth.verify_token(pw, request.cookies.get(auth.COOKIE)),
+    }
+
+
+@app.post("/api/auth/login")
+async def auth_login(req: LoginRequest, request: Request):
+    pw = auth.password()
+    if not pw:
+        return {"ok": True}
+    key = auth.client_key(request)
+    if not auth.throttle.allowed(key):
+        raise HTTPException(429, "試行回数が多すぎます。しばらく待ってからやり直してください")
+    if not auth.check_password(pw, req.password):
+        auth.throttle.fail(key)
+        await asyncio.sleep(0.5)  # 総当たりを遅くする
+        raise HTTPException(401, "パスワードが違います")
+    auth.throttle.reset(key)
+    response = JSONResponse({"ok": True})
+    response.set_cookie(
+        auth.COOKIE, auth.make_token(pw),
+        max_age=auth.SESSION_SECONDS, httponly=True, samesite="strict",
+        secure=auth.is_secure_request(request), path="/",
+    )
+    return response
+
+
+@app.post("/api/auth/logout")
+def auth_logout():
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(auth.COOKIE, path="/")
+    return response
+
 
 def _mount_frontend():
     web_dist = ROOT / "web" / "dist"

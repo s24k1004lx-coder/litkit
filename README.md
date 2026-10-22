@@ -70,6 +70,31 @@ uv run litkit ui
 
 Web UI 全体が paper-researcher 由来のデザイン（黒帯のナビ、マーカー風タイトル、太枠カード）。スタイルは `web/src/styles/paper.css` に集約（`.pr` 配下）。
 
+### 外出先から使う（Cloudflare Tunnel ＋ パスワード）
+
+アカウントやドメインなしで、スマホから開けるURLを作れる。**パスワード認証が必須**（未設定だと起動を拒否する）。
+
+1. `.env` にパスワードを書く（12文字以上を推奨。`.env` は Git に入らない）。
+   ```
+   LITKIT_PASSWORD=ここに長めのパスワード
+   ```
+2. `cloudflared` を入れる（初回のみ）。
+   ```bash
+   winget install --id Cloudflare.cloudflared
+   ```
+3. 起動する。
+   ```bash
+   uv run litkit ui --tunnel
+   ```
+4. 表示された `https://xxxx.trycloudflare.com` をスマホで開き、パスワードでログインする。
+
+- このURLは起動のたびに変わる。固定したい場合は、Cloudflare に登録した自分のドメインで named tunnel を作る（`cloudflared tunnel login` → `cloudflared tunnel create`）。
+- ログインは30日間有効（Cookie）。パスワードを変えると全端末がログアウトされる。画面右上の「ログアウト」でも抜けられる。
+- ログイン失敗が続くと一時的にロックされる（5回/5分）。
+- `LITKIT_PASSWORD` が未設定のまま Cloudflare 経由のアクセスが来た場合は、公開状態を避けるため拒否する。
+- AI要約は PC の Claude Code の利用枠を消費する。ログインできる人は誰でも押せるので、パスワードは共有しないこと。
+- PC が起動していてスリープしていない間だけ使える。
+
 ### スマホから使う
 
 画面はスマホ幅に対応している。PC側でUIを起動しておき、スマホのブラウザから開く（PCが起動している間だけ使える）。

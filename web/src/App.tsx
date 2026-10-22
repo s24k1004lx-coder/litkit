@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AuthGate } from './components/AuthGate';
 import { Layout } from './components/Layout';
 import { Dashboard } from './routes/Dashboard';
 import { SearchPage } from './routes/SearchPage';
@@ -9,6 +10,7 @@ import { ReportsPage } from './routes/ReportsPage';
 
 export default function App() {
   return (
+    <AuthGate>
     <BrowserRouter>
       <Routes>
         <Route element={<Layout />}>
@@ -21,5 +23,6 @@ export default function App() {
         </Route>
       </Routes>
     </BrowserRouter>
+    </AuthGate>
   );
 }

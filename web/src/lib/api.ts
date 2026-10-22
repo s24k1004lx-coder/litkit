@@ -1,7 +1,11 @@
 const BASE = '/api';
 
 /** FastAPI の HTTPException は {detail: "..."} で理由を返すので、あれば画面に出せるよう取り出す */
+export const UNAUTHORIZED_EVENT = 'litkit:unauthorized';
+
 async function errorFrom(res: Response): Promise<Error> {
+  // ログインが切れた／必要になったら、画面全体をログイン画面に切り替える
+  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   const detail = await res.json().then((d) => d?.detail, () => null);
   return new Error(typeof detail === 'string' ? detail : `API error: ${res.status}`);
 }
@@ -136,6 +140,7 @@ function searchStream(q: string, limit: number, callbacks: StreamCallbacks, opts
     try {
       const resp = await fetch(url, { signal: controller.signal });
       if (!resp.ok || !resp.body) {
+        if (resp.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
         callbacks.onError?.(new Error(`API error: ${resp.status}`));
         return;
       }
@@ -175,6 +180,34 @@ function searchStream(q: string, limit: number, callbacks: StreamCallbacks, opts
 
   return () => controller.abort();
 }
+
+export interface AuthStatus {
+  required: boolean;
+  authenticated: boolean;
+}
+
+export const auth = {
+  status: async (): Promise<AuthStatus> => {
+    const res = await fetch(`${BASE}/auth/status`);
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+  },
+  /** 失敗時は理由（パスワード違い・試行回数超過）を Error の message で返す */
+  login: async (password: string): Promise<void> => {
+    const res = await fetch(`${BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    if (!res.ok) {
+      const detail = await res.json().then((d) => d?.detail, () => null);
+      throw new Error(typeof detail === 'string' ? detail : `ログインに失敗しました (${res.status})`);
+    }
+  },
+  logout: async (): Promise<void> => {
+    await fetch(`${BASE}/auth/logout`, { method: 'POST' });
+  },
+};
 
 export const api = {
   getStats: () => get<Stats>('/stats'),

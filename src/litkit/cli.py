@@ -561,8 +561,10 @@ def ui(
     tailscale: bool = typer.Option(False, "--tailscale", help="Tailscale のアドレスだけで待ち受ける（外出先のスマホから、同じ tailnet の端末のみ）"),
     port: int = typer.Option(7777, help="ポート番号"),
     no_browser: bool = typer.Option(False, "--no-browser", help="ブラウザを自動で開かない"),
+    tunnel: bool = typer.Option(False, "--tunnel", help="Cloudflare Tunnel で外部から開けるURLを作る（要 cloudflared と LITKIT_PASSWORD）"),
 ):
     """Web UIを起動する。"""
+    import os
     import uvicorn
     web_dist = Path(__file__).resolve().parent.parent.parent / "web" / "dist"
     if not web_dist.exists():
@@ -577,6 +579,27 @@ def ui(
         host = ts_ip
     elif lan:
         host = "0.0.0.0"
+
+    password = os.environ.get("LITKIT_PASSWORD")
+    if tunnel:
+        if not password:
+            console.print(
+                "[red]--tunnel にはパスワードが必須です。.env に LITKIT_PASSWORD=（長めのパスワード）を書いてから起動してください。[/red]"
+            )
+            raise typer.Exit(1)
+        import shutil
+        if not shutil.which("cloudflared"):
+            console.print(
+                "[red]cloudflared が見つかりません。インストールしてからやり直してください。[/red]\n"
+                "  Windows: winget install --id Cloudflare.cloudflared"
+            )
+            raise typer.Exit(1)
+    if password and len(password) < 12:
+        console.print("[yellow]  ※ LITKIT_PASSWORD が短いです。外部に公開するなら12文字以上を推奨します。[/yellow]")
+    if password:
+        console.print("  パスワード認証: [green]有効[/green]（画面でログインが必要）")
+    elif host not in ("127.0.0.1", "localhost"):
+        console.print("  パスワード認証: [yellow]無効[/yellow]（.env に LITKIT_PASSWORD を設定すると有効になります）")
 
     console.print("[bold]litkit Web UI を起動します…[/bold]")
     if host in ("127.0.0.1", "localhost"):
@@ -598,7 +621,37 @@ def ui(
         )
         if not no_browser:
             webbrowser.open(f"http://localhost:{port}")
-    uvicorn.run("litkit.api:app", host=host, port=port, reload=True)
+    tunnel_proc = _start_tunnel(host, port) if tunnel else None
+    try:
+        uvicorn.run("litkit.api:app", host=host, port=port, reload=True)
+    finally:
+        if tunnel_proc is not None:
+            tunnel_proc.terminate()
+
+
+def _start_tunnel(host: str, port: int):
+    """cloudflared のクイックトンネルを起動し、発行された URL を表示する。"""
+    import re
+    import threading
+
+    target_host = "localhost" if host in ("0.0.0.0", "127.0.0.1") else host
+    proc = subprocess.Popen(
+        ["cloudflared", "tunnel", "--url", f"http://{target_host}:{port}"],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+    )
+
+    def watch() -> None:
+        shown = False
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            m = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", line)
+            if m and not shown:
+                shown = True
+                console.print(f"\n[bold green]  外部URL: {m.group(0)}[/bold green]  （スマホで開くと、パスワードの入力画面が出ます）")
+                console.print("  ※ このURLは起動のたびに変わります。Ctrl+C で終了するとトンネルも閉じます。\n")
+
+    threading.Thread(target=watch, daemon=True).start()
+    return proc
 
 
 if __name__ == "__main__":

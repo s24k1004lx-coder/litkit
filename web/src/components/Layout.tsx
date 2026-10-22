@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useAuth } from './authContext';
 import '../styles/paper.css';
 
 const links = [
@@ -12,6 +13,7 @@ const links = [
 /** paper-researcher 由来のUI。.pr 配下にスタイルを閉じ込めている。 */
 export function Layout() {
   const { pathname } = useLocation();
+  const { required, logout } = useAuth();
   return (
     <div className="pr">
       <nav className="appbar" aria-label="メイン">
@@ -20,6 +22,7 @@ export function Layout() {
           {links.map((l) => (
             <NavLink key={l.to} to={l.to} className={`nav${l.match(pathname) ? ' on' : ''}`}>{l.label}</NavLink>
           ))}
+          {required && <button className="nav logout" onClick={logout}>ログアウト</button>}
         </div>
       </nav>
       <Outlet />

@@ -452,3 +452,4 @@
   .pr .srcbar{padding:6px 14px}
   .pr .p-title{font-size:17px}
 }
+.pr .appbar .nav.logout{margin-left:auto;background:none;border:none;cursor:pointer;font-family:inherit}
