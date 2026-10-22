@@ -47,7 +47,7 @@
 .pr *,.pr *::before,.pr *::after{box-sizing:border-box}
 .pr{margin:0;font-family:var(--font);background:var(--bg);color:var(--text);
   font-size:15px;line-height:1.65;font-weight:500;-webkit-font-smoothing:antialiased;font-feature-settings:"palt"}
-.pr .hero{position:relative;overflow:hidden;background:var(--hero-bg);color:var(--text);isolation:isolate;
+.pr .hero{position:relative;overflow:hidden;background:var(--hero-bg,#F4F1EC);color:var(--text);isolation:isolate;
   border-bottom:1px solid var(--border)}
 .pr .hero-bg{position:absolute;inset:0;z-index:-1;pointer-events:none}
 .pr .hero-bg i{position:absolute;width:250px;height:330px;background:
@@ -81,7 +81,7 @@
   font-family:var(--font);font-size:17px;font-weight:900;letter-spacing:.1em;
   cursor:pointer;white-space:nowrap;transition:background .2s;}
 .pr .btn-search:hover{background:var(--accent-hover)}
-.pr .searched .hero{position:sticky;top:0;z-index:50;box-shadow:var(--shadow)}
+.pr .searched .hero{position:sticky;top:0;z-index:50;background:var(--hero-bg,#F4F1EC);box-shadow:var(--shadow)}
 .pr .searched .hero-bg,.pr .searched .brand-kicker,.pr .searched .brand-sub{display:none}
 .pr .searched .hero-inner{padding:12px 24px;grid-template-columns:auto 1fr;grid-template-areas:"brand search";align-items:center;gap:24px}
 .pr .searched .brand-title{font-size:26px}
