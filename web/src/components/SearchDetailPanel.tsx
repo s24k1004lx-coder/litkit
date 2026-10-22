@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { X, BookOpen, Star, Copy, Sparkles, Loader2, Layers } from 'lucide-react';
 import { api, type SearchResultItem } from '../lib/api';
 import type { Bookmark } from '../lib/bookmarks';
 import { citeAPA, citeBibTeX, citePlain, structuredSummary } from '../lib/paperUtils';
+import { sourceClass, sourceName } from '../lib/sources';
 import { TranslatedText } from './TranslatedText';
 
 interface Props {
@@ -20,20 +20,12 @@ interface Props {
 
 type CiteTab = 'apa' | 'bib' | 'plain';
 
-const sectionTitle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 };
-const section: React.CSSProperties = { marginBottom: 20 };
-const smallNote: React.CSSProperties = { fontSize: 11, color: 'var(--text-subtle)', marginTop: 6 };
-const ctlButton: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px',
-  borderRadius: 'var(--radius-ctl)', border: '1px solid var(--border)', background: 'var(--surface)',
-  color: 'var(--text)', fontSize: 12, cursor: 'pointer',
-};
-
 function candidateUrls(p: SearchResultItem): string[] {
   const doiUrl = p.doi ? (p.doi.startsWith('http') ? p.doi : `https://doi.org/${p.doi}`) : null;
   return [...new Set([p.pdf_url, p.url, doiUrl].filter((u): u is string => !!u))];
 }
 
+/** 画面右からスライドインする詳細パネル（paper-researcher のレイアウト）。 */
 export function SearchDetailPanel({
   paper: p, bookmark, ja, onClose, onToggleBookmark, onSave, onSaveIfBookmarked, onSimilar,
 }: Props) {
@@ -52,6 +44,7 @@ export function SearchDetailPanel({
 
   const abstract = p.abstract || extraAbstract?.text || null;
   const sections = structuredSummary(abstract);
+  const urls = candidateUrls(p);
 
   // 要旨・TLDRが足りなければ Semantic Scholar → PDF本文 の順で補う
   useEffect(() => {
@@ -76,7 +69,6 @@ export function SearchDetailPanel({
           if (alive) setNotice(err instanceof Error ? err.message : '補足情報の取得に失敗しました');
         }
       }
-      const urls = candidateUrls(p);
       if (!found && urls.length) {
         setBusy('pdf');
         try {
@@ -101,11 +93,11 @@ export function SearchDetailPanel({
     setAiLoading(true);
     setAiError(null);
     try {
-      const r = await api.previewSummarize(p.title, abstract ?? '', candidateUrls(p));
+      const r = await api.previewSummarize(p.title, abstract ?? '', urls);
       setAiSummary(r.summary);
       onSaveIfBookmarked({ aiSummary: r.summary });
     } catch (e) {
-      setAiError(e instanceof Error ? e.message : 'AI要約に失敗しました');
+      setAiError('AI要約に失敗しました: ' + (e instanceof Error ? e.message : ''));
     }
     setAiLoading(false);
   };
@@ -122,153 +114,121 @@ export function SearchDetailPanel({
   };
 
   return (
-    <div
-      style={{
-        width: 420, flexShrink: 0, borderLeft: '1px solid var(--border)', background: 'var(--surface)',
-        padding: 20, overflowY: 'auto', maxHeight: 'calc(100vh - 100px)', animation: 'slideIn 200ms ease-out',
-      }}
-    >
-      <style>{`@keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.4 }}>
-          <TranslatedText text={p.title} enabled={ja} />
-        </h3>
-        <button onClick={onClose} aria-label="閉じる" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
-          <X size={16} />
-        </button>
-      </div>
-
-      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-        {p.authors.join(', ') || '著者不明'} ({p.year || '?'})
-        {p.venue && <><br />{p.venue}</>}
-        {p.doi && <><br />DOI: {p.doi}</>}
-      </div>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
-        <button onClick={onToggleBookmark} style={{ ...ctlButton, ...(bookmark ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : {}) }}>
-          <Star size={13} fill={bookmark ? 'currentColor' : 'none'} /> {bookmark ? '保存済み' : 'ブックマーク'}
-        </button>
-        <button onClick={onSimilar} style={ctlButton}><Layers size={13} /> 類似論文</button>
-        {p.url && (
-          <a href={p.url} target="_blank" rel="noopener noreferrer" style={{ ...ctlButton, color: 'var(--accent)', textDecoration: 'none' }}>
-            <BookOpen size={13} /> 論文ページ
-          </a>
-        )}
-        {p.pdf_url && (
-          <a href={p.pdf_url} target="_blank" rel="noopener noreferrer" style={{ ...ctlButton, textDecoration: 'none' }}>PDF</a>
-        )}
-      </div>
-
-      {busy && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-          <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-          {busy === 'enrich' ? 'Semantic Scholar から補足情報を取得中…' : '要旨が見つからないため、PDF本文から探しています…'}
+    <>
+      <div className="overlay open" onClick={onClose} />
+      <aside className="panel open" role="dialog" aria-label="論文の詳細">
+        <div className="panel-close">
+          <button className="btn-close" onClick={onClose}>閉じる</button>
         </div>
-      )}
-      {notice && !tldr && <div style={{ ...smallNote, color: 'var(--warn)', marginBottom: 16 }}>{notice}</div>}
-
-      {tldr && (
-        <div style={section}>
-          <h4 style={sectionTitle}>ひとことで言うと</h4>
-          <p style={{ fontSize: 13, lineHeight: 1.7 }}><TranslatedText text={tldr} enabled={ja} showOriginal /></p>
-          <div style={smallNote}>出典: Semantic Scholar TLDR（AIによる1文要約）</div>
-        </div>
-      )}
-
-      {sections.length > 0 && (
-        <div style={section}>
-          <h4 style={sectionTitle}>構造化要約（要旨の文を役割別に並べたもの）</h4>
-          {sections.map((s) => (
-            <div key={s.label} style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', marginBottom: 2 }}>{s.label}</div>
-              <div style={{ fontSize: 13, lineHeight: 1.7 }}><TranslatedText text={s.text} enabled={ja} showOriginal /></div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div style={section}>
-        <h4 style={sectionTitle}>要旨</h4>
-        {abstract ? (
-          <>
-            {/* 構造化要約が同じ文を訳して表示済みなら、翻訳APIの使用量を抑えるため要旨は原文のまま出す */}
-            <p style={{ fontSize: 13, lineHeight: 1.7 }}><TranslatedText text={abstract} enabled={ja && sections.length === 0} showOriginal /></p>
-            {extraAbstract && <div style={smallNote}>要旨の出典: {extraAbstract.source}</div>}
-          </>
-        ) : (
-          !busy && <p style={{ fontSize: 13, color: 'var(--text-subtle)' }}>（要旨を取得できませんでした。論文ページで原文を確認してください）</p>
-        )}
-      </div>
-
-      <div style={section}>
-        <h4 style={sectionTitle}>AI要約</h4>
-        {aiSummary && (
-          <>
-            <div style={{ fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap', padding: 12, background: 'var(--surface-sunken)', borderRadius: 'var(--radius-ctl)' }}>
-              {aiSummary}
-            </div>
-            <div style={smallNote}>Claude による要約。原文を読み違えている可能性があるため、引用・記述の根拠にする前に原文で確認すること。</div>
-          </>
-        )}
-        {aiLoading ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-            <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Claude が要約を作成中…（数秒〜十数秒）
+        <div className="panel-inner">
+          <h2 className="d-title"><TranslatedText text={p.title} enabled={ja} /></h2>
+          <div className="d-authors">{p.authors.join(', ') || '著者不明'}</div>
+          <div className="d-meta">
+            {p.year && <span>{p.year}年</span>}
+            {p.venue && <span>{p.venue}</span>}
+            <span className={`bdg bdg-api ${sourceClass(p.source)}`}>{sourceName(p.source)}</span>
+            <span className={`bdg bdg-api rel-${p.relevance}`}>関連度 {{ high: '高', mid: '中', low: '低' }[p.relevance] ?? p.relevance}</span>
           </div>
-        ) : (
-          (abstract || candidateUrls(p).length > 0) && (
-            <button onClick={runAiSummary} style={{ ...ctlButton, marginTop: aiSummary ? 8 : 0 }}>
-              <Sparkles size={13} /> {aiSummary ? 'もう一度要約する' : 'AIで要約する'}
-            </button>
-          )
-        )}
-        {!aiSummary && !aiLoading && <div style={smallNote}>上の抜き出し要約で足りないときだけ使用。Claude Code の利用枠を消費します。</div>}
-        {aiError && <div style={{ ...smallNote, color: 'var(--risk)' }}>{aiError}</div>}
-      </div>
 
-      <div style={section}>
-        <h4 style={sectionTitle}>引用</h4>
-        <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-          {([['apa', 'APA'], ['bib', 'BibTeX'], ['plain', 'テキスト']] as const).map(([k, label]) => (
-            <button
-              key={k}
-              onClick={() => setCiteTab(k)}
-              style={{
-                ...ctlButton, padding: '3px 10px',
-                ...(citeTab === k ? { background: 'var(--accent-weak)', borderColor: 'var(--accent)', color: 'var(--accent)' } : {}),
-              }}
-            >
-              {label}
+          <div className="d-links">
+            <button className={`d-link ${bookmark ? 'primary' : ''}`} onClick={onToggleBookmark}>
+              {bookmark ? '★ ブックマーク済' : '☆ ブックマークに追加'}
             </button>
-          ))}
+            {p.pdf_url && <a className="d-link primary" href={p.pdf_url} target="_blank" rel="noopener noreferrer">PDF を開く</a>}
+            {p.doi && <a className="d-link" href={p.doi.startsWith('http') ? p.doi : `https://doi.org/${p.doi}`} target="_blank" rel="noopener noreferrer">DOI</a>}
+            {p.url && <a className="d-link" href={p.url} target="_blank" rel="noopener noreferrer">{sourceName(p.source)}</a>}
+            <button className="d-link" onClick={() => { onSimilar(); onClose(); }}>類似論文を探す</button>
+          </div>
+
+          {busy === 'enrich' && <div className="d-loading"><div className="spinner sm" />Semantic Scholar から補足情報を取得中…</div>}
+          {busy === 'pdf' && <div className="d-loading"><div className="spinner sm" />要旨が見つからないため、PDF本文を読み込んでいます…</div>}
+          {notice && !tldr && <div className="err soft">{notice}</div>}
+
+          {tldr && (
+            <div className="d-section">
+              <div className="d-section-title">ひとことで言うと</div>
+              <p className="d-tldr"><TranslatedText text={tldr} enabled={ja} showOriginal /></p>
+              <div className="d-src">出典: Semantic Scholar TLDR（AIによる1文要約）</div>
+            </div>
+          )}
+
+          {sections.length > 0 && (
+            <div className="d-section">
+              <div className="d-section-title">構造化要約</div>
+              {sections.map((s) => (
+                <div className="d-summary-block" key={s.label}>
+                  <div className="d-summary-label">{s.label}</div>
+                  <div className="d-summary-text"><TranslatedText text={s.text} enabled={ja} showOriginal /></div>
+                </div>
+              ))}
+              <div className="d-src">要旨の文を役割別に並べ替えたもの（内容は原文のまま）</div>
+            </div>
+          )}
+
+          <div className="d-section">
+            <div className="d-section-title">要旨</div>
+            {abstract ? (
+              <>
+                {/* 構造化要約が同じ文を訳して表示済みなら、翻訳APIの使用量を抑えるため要旨は原文のまま出す */}
+                <p className="d-abstract"><TranslatedText text={abstract} enabled={ja && sections.length === 0} showOriginal /></p>
+                {extraAbstract && <div className="d-src">要旨の出典: {extraAbstract.source}</div>}
+              </>
+            ) : (
+              !busy && <p className="d-hint">要旨を取得できませんでした（PDFが非公開、またはスキャン画像の可能性があります）。DOI またはリンクから原文をご確認ください。</p>
+            )}
+          </div>
+
+          {(abstract || urls.length > 0) && (
+            <div className="d-section">
+              <div className="d-section-title">AI要約</div>
+              {aiSummary && (
+                <>
+                  <div className="d-ai">{aiSummary}</div>
+                  <div className="d-src">Claude による要約（原文を読み違えている可能性があります。引用・記述の根拠にする前に原文で確認してください）</div>
+                </>
+              )}
+              {aiLoading ? (
+                <div className="d-loading"><div className="spinner sm" />Claude が要約を作成中…（数秒〜十数秒）</div>
+              ) : (
+                <>
+                  <button className="d-link primary" onClick={runAiSummary} style={aiSummary ? { marginTop: 10 } : undefined}>
+                    {aiSummary ? 'もう一度要約する' : 'AIで要約する'}
+                  </button>
+                  {!aiSummary && <div className="d-src">上の抜き出し要約で足りないときだけ使ってください。Claude Code の利用枠を消費します。</div>}
+                </>
+              )}
+              {aiError && <div className="d-err">{aiError}</div>}
+            </div>
+          )}
+
+          <div className="d-section">
+            <div className="d-section-title">引用</div>
+            <div className="d-cite-tabs">
+              {([['apa', 'APA'], ['bib', 'BibTeX'], ['plain', 'テキスト']] as const).map(([k, label]) => (
+                <button key={k} className={`d-cite-tab ${citeTab === k ? 'on' : ''}`} onClick={() => setCiteTab(k)}>{label}</button>
+              ))}
+            </div>
+            <div className="d-cite-box">{citeText}</div>
+            <button className="btn-copy" onClick={copyCite}>{copied ? 'コピーしました' : 'クリップボードにコピー'}</button>
+          </div>
+
+          <div className="d-section">
+            <div className="d-section-title">メモ</div>
+            <div className="d-notes">
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="この論文についてのメモを記入…（保存するとブックマークにも追加されます）"
+              />
+              <button className="save-note" onClick={() => onSave({ note: note.trim() || undefined })}>メモを保存</button>
+            </div>
+          </div>
+
+          <div className="d-scope">
+            情報の範囲: アブストラクト（または PDF 冒頭）に基づく参考情報です。カード化（litkit add）するまで根拠IDはなく、論文の内容として記述する根拠にはできません。
+          </div>
         </div>
-        <pre style={{ fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, padding: 10, background: 'var(--surface-sunken)', borderRadius: 'var(--radius-ctl)' }}>
-          {citeText}
-        </pre>
-        <button onClick={copyCite} style={{ ...ctlButton, marginTop: 8 }}>
-          <Copy size={13} /> {copied ? 'コピーしました' : 'クリップボードにコピー'}
-        </button>
-      </div>
-
-      <div style={section}>
-        <h4 style={sectionTitle}>メモ</h4>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="この論文についてのメモ（保存するとブックマークにも追加されます）"
-          rows={4}
-          style={{
-            width: '100%', padding: 10, fontSize: 13, lineHeight: 1.6, resize: 'vertical',
-            border: '1px solid var(--border)', borderRadius: 'var(--radius-ctl)',
-            background: 'var(--surface-sunken)', color: 'var(--text)', fontFamily: 'inherit',
-          }}
-        />
-        <button onClick={() => onSave({ note: note.trim() || undefined })} style={{ ...ctlButton, marginTop: 8 }}>メモを保存</button>
-      </div>
-
-      <div style={{ padding: '12px 16px', background: 'var(--surface-sunken)', borderRadius: 'var(--radius-ctl)', fontSize: 11, color: 'var(--text-muted)' }}>
-        情報の範囲: アブストラクト（または PDF 冒頭）に基づく参考情報。カード化（litkit add）するまで根拠IDはなく、論文の内容として記述する根拠にはできません。
-      </div>
-    </div>
+      </aside>
+    </>
   );
 }

@@ -40,12 +40,12 @@ export function TranslatedText({ text, enabled, showOriginal = false }: Props) {
   return (
     <>
       <span style={{ opacity: ja ? 1 : 0.6 }}>{ja ?? text}</span>
-      {!ja && !failed && <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}> （翻訳中…）</span>}
-      {failed && <span style={{ fontSize: 11, color: 'var(--risk)' }}> （翻訳に失敗しました）</span>}
+      {!ja && !failed && <span className="tr-note"> 翻訳中…</span>}
+      {failed && <span className="tr-note fail">（翻訳できませんでした）</span>}
       {showOriginal && ja && (
-        <details style={{ marginTop: 6 }}>
-          <summary style={{ fontSize: 11, color: 'var(--text-subtle)', cursor: 'pointer' }}>原文を見る</summary>
-          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{text}</p>
+        <details className="d-orig">
+          <summary>原文を見る</summary>
+          <p>{text}</p>
         </details>
       )}
     </>

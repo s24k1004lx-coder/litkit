@@ -1,22 +1,17 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Search, Loader2, Star, ArrowLeft, Download } from 'lucide-react';
 import { api, type SearchResultItem } from '../lib/api';
 import { useBookmarks, bookmarksToMarkdown, type Bookmark } from '../lib/bookmarks';
-import { bulletPoints, paperKey } from '../lib/paperUtils';
-import { Badge } from '../components/Badge';
-import { EmptyState } from '../components/EmptyState';
+import { bulletPoints, citeAPA, paperKey } from '../lib/paperUtils';
+import { sourceClass, sourceName } from '../lib/sources';
 import { SearchDetailPanel } from '../components/SearchDetailPanel';
+import '../styles/paper.css';
 
 type Tab = 'results' | 'bookmarks';
 type SortKey = 'arrival' | 'relevance' | 'year';
 
 const RELEVANCE_RANK: Record<string, number> = { high: 0, mid: 1, low: 2 };
+const RELEVANCE_LABEL: Record<string, string> = { high: '高', mid: '中', low: '低' };
 const JA_KEY = 'litkit-search-ja';
-
-const ctl: React.CSSProperties = {
-  padding: '5px 8px', borderRadius: 'var(--radius-ctl)', border: '1px solid var(--border)',
-  background: 'var(--surface-sunken)', color: 'var(--text)', fontSize: 12,
-};
 
 function loadJa(): boolean {
   try {
@@ -45,12 +40,14 @@ export function SearchPage() {
   const [similar, setSimilar] = useState<{ title: string; items: SearchResultItem[] } | null>(null);
   const [similarLoading, setSimilarLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
 
   const bm = useBookmarks();
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 2500);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2000);
   }, []);
 
   const doSearch = useCallback(() => {
@@ -97,7 +94,7 @@ export function SearchPage() {
     try {
       const r = await api.previewSimilar(p.title, p.doi);
       if (r.results.length === 0) {
-        showToast('関連論文が見つかりませんでした');
+        showToast('関連論文の情報がありません');
       } else {
         setSimilar({ title: p.title, items: r.results });
         setSelected(null);
@@ -116,7 +113,7 @@ export function SearchPage() {
     const handler = (e: KeyboardEvent) => {
       if (e.key === '/' && !e.ctrlKey && !e.metaKey) {
         const el = document.getElementById('search-input');
-        if (el && document.activeElement !== el) {
+        if (el && document.activeElement !== el && !(document.activeElement instanceof HTMLTextAreaElement)) {
           e.preventDefault();
           el.focus();
         }
@@ -126,6 +123,16 @@ export function SearchPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  // 詳細パネルを開いている間は背面のスクロールを止める
+  useEffect(() => {
+    if (!selected) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [selected]);
 
   const toggleJa = (v: boolean) => {
     setJa(v);
@@ -148,6 +155,15 @@ export function SearchPage() {
       a.download = `bookmarks-${new Date().toISOString().slice(0, 10)}.md`;
       a.click();
       URL.revokeObjectURL(url);
+    }
+  };
+
+  const copyCitation = async (p: SearchResultItem) => {
+    try {
+      await navigator.clipboard.writeText(citeAPA(p));
+      showToast('APA引用をコピーしました');
+    } catch {
+      showToast('コピーに失敗しました');
     }
   };
 
@@ -175,253 +191,192 @@ export function SearchPage() {
     return filtered;
   }, [base, srcFilter, yearFrom, yearTo, sort]);
 
-  const relevanceBadge = (r: string) => {
-    if (r === 'high') return <Badge variant="accent">高</Badge>;
-    if (r === 'mid') return <Badge variant="warn">中</Badge>;
-    return <Badge>低</Badge>;
-  };
-
-  const renderRow = (r: SearchResultItem) => {
-    const key = paperKey(r);
-    const isSelected = selected != null && paperKey(selected) === key;
+  const renderPaper = (r: SearchResultItem, removable = false) => {
     const saved = bm.has(r);
-    const points = r.l1 ? [] : bulletPoints(r.abstract, r.title);
+    const points = r.l1 ? [r.l1] : bulletPoints(r.abstract, r.title);
+    const href = r.url || (r.doi ? (r.doi.startsWith('http') ? r.doi : `https://doi.org/${r.doi}`) : '');
+    const doiHref = r.doi ? (r.doi.startsWith('http') ? r.doi : `https://doi.org/${r.doi}`) : '';
     return (
-      <div
-        key={key}
-        onClick={() => setSelected(r)}
-        style={{
-          padding: '12px 16px',
-          borderBottom: '1px solid var(--border)',
-          cursor: 'pointer',
-          background: isSelected ? 'var(--accent-weak)' : 'transparent',
-          transition: 'background 150ms',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          {relevanceBadge(r.relevance)}
-          <Badge variant={r.is_open_access ? 'ok' : 'default'}>{r.availability}</Badge>
-          {r.has_card && <Badge variant="info">取込済</Badge>}
-          <span className="tabular-nums" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{r.year || '?'}</span>
-          <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{r.source}</span>
-          <button
-            onClick={(e) => { e.stopPropagation(); bm.toggle(r); }}
-            aria-label={saved ? 'ブックマーク解除' : 'ブックマーク'}
-            style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: saved ? 'var(--accent)' : 'var(--text-subtle)' }}
-          >
-            <Star size={15} fill={saved ? 'currentColor' : 'none'} />
-          </button>
+      <div className="paper" key={paperKey(r)}>
+        <h3 className="p-title">
+          {href ? (
+            <a href={href} target="_blank" rel="noopener noreferrer">{r.title || '（タイトルなし）'}</a>
+          ) : (
+            <span className={r.title ? undefined : 'p-empty-title'}>{r.title || '（タイトルなし）'}</span>
+          )}
+        </h3>
+        <div className="p-meta">
+          <span>{r.authors.slice(0, 4).join(', ') || '著者不明'}{r.authors.length > 4 ? ' 他' : ''}</span>
+          {r.year && <><span className="sep">/</span><span>{r.year}</span></>}
         </div>
-        <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', marginBottom: 2 }}>{r.title}</div>
-        {r.l1 && (
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-            {r.l1}
-          </div>
-        )}
+        <div className="p-badges">
+          <span className={`bdg bdg-api ${sourceClass(r.source)}`}>{sourceName(r.source)}</span>
+          <span className={`bdg bdg-api rel-${r.relevance}`}>関連度 {RELEVANCE_LABEL[r.relevance] ?? r.relevance}</span>
+          {r.has_card && <span className="bdg bdg-api bdg-card">取込済</span>}
+          {r.venue && <span className="bdg bdg-src" title={r.venue}>{r.venue}</span>}
+          {r.pdf_url && <a className="bdg bdg-pdf" href={r.pdf_url} target="_blank" rel="noopener noreferrer">PDF</a>}
+          {doiHref && <a className="bdg bdg-doi" href={doiHref} target="_blank" rel="noopener noreferrer">DOI</a>}
+        </div>
         {points.length > 0 && (
-          <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            {points.map((s, i) => (
-              <li key={i} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s}</li>
-            ))}
+          <ul className="kp">
+            {points.map((s, i) => <li key={i}>{s}</li>)}
           </ul>
         )}
+        <div className="p-actions">
+          <button className="act detail" onClick={() => setSelected(r)}>{r.abstract ? '要約を見る' : '要約を探す'}</button>
+          <button className={`act ${saved ? 'on' : ''}`} onClick={() => { bm.toggle(r); showToast(saved ? 'ブックマーク解除' : 'ブックマークに追加'); }}>
+            {saved ? '★ 保存済' : '☆ 保存'}
+          </button>
+          <button className="act" onClick={() => findSimilar(r)}>類似論文</button>
+          <button className="act" onClick={() => copyCitation(r)}>引用コピー</button>
+          {removable && <button className="act rm" onClick={() => bm.toggle(r)}>削除</button>}
+        </div>
       </div>
     );
   };
-
-  const tabButton = (t: Tab, label: string, count: number) => (
-    <button
-      onClick={() => setTab(t)}
-      style={{
-        padding: '8px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13,
-        fontWeight: tab === t ? 700 : 500,
-        color: tab === t ? 'var(--accent)' : 'var(--text-muted)',
-        borderBottom: `2px solid ${tab === t ? 'var(--accent)' : 'transparent'}`,
-      }}
-    >
-      {label} <span className="tabular-nums" style={{ fontSize: 11 }}>{count}</span>
-    </button>
-  );
 
   const selectedBookmark: Bookmark | undefined = selected
     ? bm.items.find((b) => paperKey(b) === paperKey(selected))
     : undefined;
 
+  const spinning = loading || similarLoading;
+
   return (
-    <div>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>文献検索</h1>
-
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-        <div style={{ flex: 1, position: 'relative' }}>
-          <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle)' }} />
-          <input
-            id="search-input"
-            type="text"
-            placeholder="検索クエリを入力… (/ でフォーカス)"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && doSearch()}
-            style={{
-              width: '100%',
-              padding: '10px 12px 10px 36px',
-              borderRadius: 'var(--radius-ctl)',
-              border: '1px solid var(--border)',
-              background: 'var(--surface-sunken)',
-              color: 'var(--text)',
-              fontSize: 14,
-              outline: 'none',
-            }}
-          />
+    <div className={`pr${searched ? ' searched' : ''}`}>
+      <header className="hero">
+        <div className="hero-bg" aria-hidden="true"><i /><i /><i /></div>
+        <div className="hero-inner">
+          <div className="brand">
+            <div className="brand-kicker"><span className="ver">litkit</span>マルチソース論文検索</div>
+            <h1 className="brand-title">文献検索</h1>
+            <div className="brand-sub">Literature Search</div>
+          </div>
+          <div className="search-wrap">
+            <input
+              id="search-input"
+              type="text"
+              placeholder="キーワード検索（日本語・英語）  / でフォーカス"
+              autoComplete="off"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && doSearch()}
+            />
+            <button className="btn-search" onClick={doSearch} disabled={loading || !query.trim()} style={{ opacity: loading || !query.trim() ? 0.6 : 1 }}>検索</button>
+          </div>
         </div>
-        <button
-          onClick={doSearch}
-          disabled={loading || !query.trim()}
-          style={{
-            padding: '10px 20px',
-            borderRadius: 'var(--radius-ctl)',
-            border: 'none',
-            background: 'var(--accent)',
-            color: '#fff',
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: 'pointer',
-            opacity: loading || !query.trim() ? 0.5 : 1,
-          }}
-        >
-          検索
-        </button>
-      </div>
+      </header>
 
-      {enQuery && (
-        <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 8 }}>
-          英語クエリ: {enQuery}
+      <div className="subbar">
+        <div className="subbar-inner">
+          <label>年{' '}
+            <input type="number" value={yearFrom} onChange={(e) => setYearFrom(e.target.value)} placeholder="from" min={1900} max={2100} />
+            {' – '}
+            <input type="number" value={yearTo} onChange={(e) => setYearTo(e.target.value)} placeholder="to" min={1900} max={2100} />
+          </label>
+          <label>並替{' '}
+            <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
+              <option value="arrival">取得順</option>
+              <option value="relevance">研究関連度</option>
+              <option value="year">年（新→旧）</option>
+            </select>
+          </label>
+          <label className="ja-toggle">
+            <input type="checkbox" checked={ja} onChange={(e) => toggleJa(e.target.checked)} /> 詳細を日本語訳
+          </label>
+          {enQuery && <span style={{ fontSize: 13, color: 'var(--text-3)' }}>英語クエリ: {enQuery}</span>}
         </div>
-      )}
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-        <label>年{' '}
-          <input type="number" value={yearFrom} onChange={e => setYearFrom(e.target.value)} placeholder="from" min={1900} max={2100} style={{ ...ctl, width: 70 }} />
-          {' – '}
-          <input type="number" value={yearTo} onChange={e => setYearTo(e.target.value)} placeholder="to" min={1900} max={2100} style={{ ...ctl, width: 70 }} />
-        </label>
-        <label>並替{' '}
-          <select value={sort} onChange={e => setSort(e.target.value as SortKey)} style={ctl}>
-            <option value="arrival">取得順</option>
-            <option value="relevance">研究関連度</option>
-            <option value="year">年（新→旧）</option>
-          </select>
-        </label>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-          <input type="checkbox" checked={ja} onChange={e => toggleJa(e.target.checked)} /> 詳細を日本語訳
-        </label>
       </div>
 
       {sources.length > 1 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-          {['all', ...sources].map((s) => (
-            <button
-              key={s}
-              onClick={() => setSrcFilter(s)}
-              style={{
-                ...ctl, cursor: 'pointer',
-                ...(srcFilter === s ? { background: 'var(--accent-weak)', borderColor: 'var(--accent)', color: 'var(--accent)', fontWeight: 600 } : {}),
-              }}
-            >
-              {s === 'all' ? '全て' : s}
-            </button>
-          ))}
+        <div className="srcbar">
+          <div className="srcbar-inner">
+            <span className="lbl">ソース:</span>
+            {['all', ...sources].map((s) => (
+              <button key={s} className={`src-btn ${srcFilter === s ? 'on' : ''}`} onClick={() => setSrcFilter(s)}>
+                {s === 'all' ? '全て' : sourceName(s)}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
-        {tabButton('results', '検索結果', visible.length)}
-        {tabButton('bookmarks', 'ブックマーク', bm.items.length)}
-      </div>
-
-      <div style={{ display: 'flex', gap: 0 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {tab === 'results' && (
-            <>
-              {similar && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 16px', fontSize: 12, background: 'var(--info-weak)', color: 'var(--info)' }}>
-                  <span>「{similar.title.slice(0, 50)}{similar.title.length > 50 ? '…' : ''}」の関連論文（{similar.items.length}件）</span>
-                  <button onClick={() => setSimilar(null)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 12 }}>
-                    <ArrowLeft size={12} /> 検索結果に戻る
-                  </button>
-                </div>
-              )}
-
-              {(loading || similarLoading) && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 16px', fontSize: 12, color: 'var(--text-muted)',
-                  borderBottom: '1px solid var(--border)',
-                }}>
-                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                  <span>
-                    {similarLoading ? '関連論文を取得中…' : `検索中… ${sourcesLoaded.length > 0 ? `(${sourcesLoaded.length} ソース完了)` : ''}`}
-                  </span>
-                </div>
-              )}
-
-              {!loading && !similarLoading && searched && visible.length === 0 && (
-                <EmptyState
-                  icon={<Search size={40} />}
-                  title="結果なし"
-                  description={base.length > 0 ? '絞り込み条件を緩めてみてください' : '別のキーワードで検索してみてください'}
-                />
-              )}
-
-              {visible.map(renderRow)}
-            </>
-          )}
-
-          {tab === 'bookmarks' && (
-            bm.items.length === 0 ? (
-              <EmptyState
-                icon={<Star size={40} />}
-                title="ブックマークなし"
-                description="検索結果の ☆ で、後で読みたい論文を保存できます"
-              />
-            ) : (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', fontSize: 12, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
-                  <span>{bm.items.length}件（このブラウザに保存。文献カードとは別管理）</span>
-                  <button onClick={exportBookmarks} style={{ ...ctl, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                    <Download size={12} /> Markdownエクスポート
-                  </button>
-                </div>
-                {bm.items.map(renderRow)}
-              </>
-            )
-          )}
+      <div className="main">
+        <div className="tabs">
+          <button className={`tab ${tab === 'results' ? 'on' : ''}`} onClick={() => setTab('results')}>
+            検索結果 <span className="n">{visible.length}</span>
+          </button>
+          <button className={`tab ${tab === 'bookmarks' ? 'on' : ''}`} onClick={() => setTab('bookmarks')}>
+            ブックマーク <span className="n">{bm.items.length}</span>
+          </button>
         </div>
 
-        {selected && (
-          <SearchDetailPanel
-            key={paperKey(selected)}
-            paper={selected}
-            bookmark={selectedBookmark}
-            ja={ja}
-            onClose={() => setSelected(null)}
-            onToggleBookmark={() => bm.toggle(selected)}
-            onSave={(fields) => { bm.patch(selected, fields); showToast('保存しました'); }}
-            onSaveIfBookmarked={(fields) => bm.patchIfSaved(selected, fields)}
-            onSimilar={() => findSimilar(selected)}
-          />
+        {tab === 'results' && (
+          <div>
+            {similar && (
+              <div className="sim-bar">
+                <span><b>「{similar.title.slice(0, 50)}{similar.title.length > 50 ? '…' : ''}」</b>の関連論文（{similar.items.length}件）</span>
+                <button onClick={() => setSimilar(null)}>← 検索に戻る</button>
+              </div>
+            )}
+
+            {spinning && visible.length === 0 ? (
+              <div className="spinner-wrap"><div className="spinner" /></div>
+            ) : !searched && !similar ? (
+              <div className="empty">
+                <b>キーワードを入力して検索</b>
+                CiNii・J-STAGE・Crossref・OpenAlex・Semantic Scholar・arXiv・NDL から横断検索します
+              </div>
+            ) : visible.length === 0 && !spinning ? (
+              <div className="empty">
+                <b>該当する論文がありません</b>
+                {base.length > 0 ? '絞り込み条件を緩めてみてください' : 'キーワードを変えて再検索してください'}
+              </div>
+            ) : (
+              <>
+                {spinning && (
+                  <div className="d-loading" style={{ marginTop: 20, marginBottom: 0 }}>
+                    <div className="spinner sm" />
+                    {similarLoading ? '関連論文を取得中…' : `検索中…（${sourcesLoaded.length} ソース完了）`}
+                  </div>
+                )}
+                {visible.map((r) => renderPaper(r))}
+              </>
+            )}
+          </div>
+        )}
+
+        {tab === 'bookmarks' && (
+          <div>
+            {bm.items.length === 0 ? (
+              <div className="empty"><b>ブックマークなし</b>「☆ 保存」で論文を保存できます</div>
+            ) : (
+              <>
+                <div className="bm-bar">
+                  <span className="info">{bm.items.length}件（このブラウザに保存。文献カードとは別管理）</span>
+                  <button className="btn-export" onClick={exportBookmarks}>Markdownエクスポート</button>
+                </div>
+                {bm.items.map((r) => renderPaper(r, true))}
+              </>
+            )}
+          </div>
         )}
       </div>
 
-      {toast && (
-        <div style={{
-          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', padding: '8px 16px',
-          background: 'var(--text)', color: 'var(--bg)', borderRadius: 'var(--radius-ctl)', fontSize: 12,
-          boxShadow: 'var(--shadow-pop)', zIndex: 50,
-        }}>
-          {toast}
-        </div>
+      {selected && (
+        <SearchDetailPanel
+          key={paperKey(selected)}
+          paper={selected}
+          bookmark={selectedBookmark}
+          ja={ja}
+          onClose={() => setSelected(null)}
+          onToggleBookmark={() => bm.toggle(selected)}
+          onSave={(fields) => { bm.patch(selected, fields); showToast('メモを保存しました'); }}
+          onSaveIfBookmarked={(fields) => bm.patchIfSaved(selected, fields)}
+          onSimilar={() => findSimilar(selected)}
+        />
       )}
+
+      <div className={`toast${toast ? ' on' : ''}`}>{toast}</div>
     </div>
   );
 }
