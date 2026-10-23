@@ -5,7 +5,9 @@ import '../styles/paper.css';
 const links = [
   { to: '/', label: 'ダッシュボード', match: (p: string) => p === '/' },
   { to: '/search', label: '検索', match: (p: string) => p.startsWith('/search') },
+  { to: '/import', label: '取り込み', match: (p: string) => p.startsWith('/import') },
   { to: '/library', label: 'ライブラリ', match: (p: string) => p.startsWith('/library') || p.startsWith('/paper/') },
+  { to: '/ask', label: '質問', match: (p: string) => p.startsWith('/ask') },
   { to: '/thesis', label: '執筆', match: (p: string) => p.startsWith('/thesis') },
   { to: '/reports', label: 'レポート', match: (p: string) => p.startsWith('/reports') },
 ];

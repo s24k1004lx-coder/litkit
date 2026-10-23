@@ -16,6 +16,9 @@ interface Props {
   /** 取得した補足情報の保存。ブックマーク済みのときだけ書き込む */
   onSaveIfBookmarked: (fields: Partial<Bookmark>) => void;
   onSimilar: () => void;
+  inLibrary: boolean;
+  adding: boolean;
+  onAdd: () => void;
 }
 
 type CiteTab = 'apa' | 'bib' | 'plain';
@@ -28,6 +31,7 @@ function candidateUrls(p: SearchResultItem): string[] {
 /** 画面右からスライドインする詳細パネル（paper-researcher のレイアウト）。 */
 export function SearchDetailPanel({
   paper: p, bookmark, ja, onClose, onToggleBookmark, onSave, onSaveIfBookmarked, onSimilar,
+  inLibrary, adding, onAdd,
 }: Props) {
   const [tldr, setTldr] = useState<string | null>(bookmark?.tldr ?? null);
   const [extraAbstract, setExtraAbstract] = useState<{ text: string; source: string } | null>(null);
@@ -131,6 +135,9 @@ export function SearchDetailPanel({
           </div>
 
           <div className="d-links">
+            <button className={`d-link ${inLibrary ? '' : 'primary'}`} onClick={onAdd} disabled={inLibrary || adding}>
+              {inLibrary ? '✓ ライブラリに追加済' : adding ? '追加中…' : '＋ ライブラリに追加'}
+            </button>
             <button className={`d-link ${bookmark ? 'primary' : ''}`} onClick={onToggleBookmark}>
               {bookmark ? '★ ブックマーク済' : '☆ ブックマークに追加'}
             </button>
@@ -225,7 +232,7 @@ export function SearchDetailPanel({
           </div>
 
           <div className="d-scope">
-            情報の範囲: アブストラクト（または PDF 冒頭）に基づく参考情報です。カード化（litkit add）するまで根拠IDはなく、論文の内容として記述する根拠にはできません。
+            情報の範囲: アブストラクト（または PDF 冒頭）に基づく参考情報です。「ライブラリに追加」してカード化するまで根拠IDはなく、論文の内容として記述する根拠にはできません。
           </div>
         </div>
       </aside>

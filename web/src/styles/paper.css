@@ -453,3 +453,10 @@
   .pr .p-title{font-size:17px}
 }
 .pr .appbar .nav.logout{margin-left:auto;background:none;border:none;cursor:pointer;font-family:inherit}
+
+/* 取り込み画面 */
+.pr .dropzone{padding:36px 16px;text-align:center;border:3px dashed var(--border-2);background:var(--surface);color:var(--text-3);font-weight:700;font-size:14px;cursor:pointer;transition:border-color .15s,background .15s}
+.pr .dropzone:hover,.pr .dropzone.on{border-color:var(--accent);background:var(--accent-bg);color:var(--accent-text)}
+.pr .inbox-list{margin:0 0 8px;padding-left:20px;font-size:14px;color:var(--text-2)}
+.pr .import-line{padding:8px 14px;margin:8px 0;background:var(--surface);border-left:6px solid var(--accent);font-size:14px;font-weight:700}
+.pr .import-line a{color:var(--accent-text);margin-left:8px}

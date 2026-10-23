@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api, type CardMeta } from '../lib/api';
 import { Badge } from '../components/Badge';
 import { Skeleton } from '../components/Skeleton';
@@ -18,6 +18,17 @@ export function LibraryPage() {
     api.getCards().then(setCards).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
+  const [reindexMsg, setReindexMsg] = useState<string | null>(null);
+  const reindex = async () => {
+    setReindexMsg('再構築中…');
+    try {
+      const r = await api.reindex();
+      setReindexMsg(`${r.indexed}件を索引化しました`);
+    } catch {
+      setReindexMsg('索引の再構築に失敗しました');
+    }
+  };
+
   const open = (id: string) => navigate(`/paper/${id}`);
   const depthBadge = (c: CardMeta, short = false) => (
     <Badge variant={c.depth === 'full_text' ? 'ok' : 'warn'}>
@@ -32,12 +43,13 @@ export function LibraryPage() {
         {loading ? (
           <div style={{ marginTop: 28 }}><Skeleton height={90} count={5} /></div>
         ) : cards.length === 0 ? (
-          <EmptyState title="文献がありません" description="「検索」で文献を探し、litkit add で取り込んでください" />
+          <EmptyState title="文献がありません" description="「検索」で文献を探して追加するか、「取り込み」でDOI・URL・PDFから追加してください" action={<Link className="d-link primary" to="/import">取り込みへ</Link>} />
         ) : (
           <>
             <div className="toolbar">
-              <span className="info">{cards.length}件</span>
+              <span className="info">{cards.length}件{reindexMsg && `（${reindexMsg}）`}</span>
               <div style={{ display: 'flex', gap: 6 }}>
+                <button className="act" onClick={reindex} title="検索用の索引を作り直します">索引を再構築</button>
                 <button className={`act ${view === 'grid' ? 'on' : ''}`} onClick={() => setView('grid')}>カード</button>
                 <button className={`act ${view === 'table' ? 'on' : ''}`} onClick={() => setView('table')}>一覧</button>
               </div>

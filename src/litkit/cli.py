@@ -32,6 +32,10 @@ from .cite import generate_reference_list
 from .claims import check_claims, load_claims
 from .thesis import check_all, load_outline
 from .report import generate_weekly_report
+from .service import (
+    ServiceError, add_pdf_from_inbox, add_result, assess_relevance, make_card_id,
+    make_review, upgrade_card,
+)
 
 app = typer.Typer(help="litkit — 卒業研究用 文献研究支援システム")
 console = Console()
@@ -40,27 +44,8 @@ console = Console()
 _last_results: list[SearchResult] = []
 
 
-def _assess_relevance(text: str) -> Relevance:
-    """CLAUDE.mdのキーワードとの近さで関連度を判定する。"""
-    ctx = load_research_context()
-    keywords = ctx["keywords_ja"] + ctx["keywords_en"]
-    text_lower = text.lower()
-    hits = sum(1 for kw in keywords if kw.lower() in text_lower)
-    if hits >= 3:
-        return Relevance.HIGH
-    if hits >= 1:
-        return Relevance.MID
-    return Relevance.LOW
-
-
-def _make_card_id(result: SearchResult) -> str:
-    prefix = result.source.value
-    if result.doi:
-        safe = result.doi.replace("/", "_").replace(".", "_")
-        return f"{prefix}-{safe}"
-    import hashlib
-    h = hashlib.md5(result.title.encode()).hexdigest()[:12]
-    return f"{prefix}-{h}"
+_assess_relevance = assess_relevance
+_make_card_id = make_card_id
 
 
 @app.command()
@@ -227,53 +212,16 @@ def add(identifier: str):
         console.print("[red]文献情報を取得できませんでした。[/red]")
         raise typer.Exit(1)
 
-    card_id = _make_card_id(result)
-    if card_exists(card_id):
-        console.print(f"[yellow]カード {card_id} は既に存在します。[/yellow]")
+    outcome = asyncio.run(add_result(result))
+    if not outcome.created:
+        console.print(f"[yellow]カード {outcome.card_id} は既に存在します。[/yellow]")
         raise typer.Exit(0)
+    if outcome.pdf_error:
+        console.print(f"[yellow]PDF取得失敗: {outcome.pdf_error}[/yellow]")
 
-    # PDF取得を試みる
-    pdf_path = None
-    full_text = None
-    if result.pdf_url and result.is_open_access:
-        try:
-            console.print("[dim]PDFをダウンロード中…[/dim]")
-            pdf_path = asyncio.run(download_pdf(result.pdf_url, f"{card_id}.pdf"))
-            full_text = extract_text_from_pdf(pdf_path)
-            console.print("[green]PDF取得・本文抽出完了[/green]")
-        except Exception as e:
-            console.print(f"[yellow]PDF取得失敗: {e}[/yellow]")
-
-    depth = Depth.FULL_TEXT if full_text else Depth.ABSTRACT_ONLY
-    rel = _assess_relevance(f"{result.title} {result.abstract or ''}")
-
-    meta = CardMeta(
-        id=card_id,
-        title=result.title,
-        authors=result.authors,
-        year=result.year,
-        venue=result.venue,
-        doi=result.doi,
-        url=result.url,
-        source=result.source,
-        lang=result.lang,
-        pdf=f"literature/pdf/{card_id}.pdf" if pdf_path else None,
-        status=Status.UNREAD,
-        depth=depth,
-        tags=[],
-        relevance=rel,
-        l1=result.l1 or (result.abstract[:120] if result.abstract else None),
-        abstract=result.abstract,
-    )
-
-    l2 = result.abstract[:500] if result.abstract else "（アブストラクト未取得）"
-    body = generate_card_body(meta, l2=l2)
-    write_card(meta, body)
-    index_card(card_id)
-
-    console.print(f"[green]カード作成: {card_id} ({depth.value})[/green]")
-    console.print(f"  タイトル: {meta.title}")
-    console.print(f"  深度: {'精読要約あり' if depth == Depth.FULL_TEXT else 'アブストのみ'}")
+    console.print(f"[green]カード作成: {outcome.card_id} ({outcome.depth.value})[/green]")
+    console.print(f"  タイトル: {outcome.title}")
+    console.print(f"  深度: {'精読要約あり' if outcome.depth == Depth.FULL_TEXT else 'アブストのみ'}")
 
 
 async def _resolve_identifier(identifier: str) -> SearchResult | None:
@@ -326,55 +274,11 @@ def inbox():
     for pdf_path in pdfs:
         console.print(f"\n処理中: {pdf_path.name}")
         try:
-            pdf_meta = extract_metadata_from_pdf(pdf_path)
-            title = pdf_meta.get("title") or pdf_path.stem
-            doi = pdf_meta.get("doi")
-
-            result = SearchResult(
-                title=title,
-                authors=[a for a in pdf_meta.get("author", "").split(",") if a.strip()],
-                doi=doi,
-                source=Source.MANUAL,
-                lang=Lang.JA,
-                is_open_access=True,
-            )
-
-            # DOIがあればCrossRefで書誌補完
-            if doi:
-                from .sources.crossref import CrossRefAdapter
-                adapter = CrossRefAdapter()
-                cr_result = asyncio.run(adapter.fetch_metadata(doi))
-                if cr_result:
-                    result = cr_result
-                    result.source = Source.MANUAL
-
-            card_id = _make_card_id(result)
-            dest = move_from_inbox(pdf_path)
-            full_text = extract_text_from_pdf(dest)
-
-            meta = CardMeta(
-                id=card_id,
-                title=result.title,
-                authors=result.authors,
-                year=result.year,
-                venue=result.venue,
-                doi=result.doi,
-                url=result.url,
-                source=result.source,
-                lang=result.lang,
-                pdf=f"literature/pdf/{dest.name}",
-                status=Status.UNREAD,
-                depth=Depth.FULL_TEXT,
-                tags=[],
-                relevance=_assess_relevance(f"{result.title} {result.abstract or ''}"),
-                l1=result.abstract[:120] if result.abstract else None,
-            )
-
-            l2 = result.abstract[:500] if result.abstract else "（PDF本文から生成予定）"
-            body = generate_card_body(meta, l2=l2)
-            write_card(meta, body)
-            index_card(card_id)
-            console.print(f"  [green]→ {card_id}[/green]")
+            outcome = asyncio.run(add_pdf_from_inbox(pdf_path))
+            if outcome.created:
+                console.print(f"  [green]→ {outcome.card_id}[/green]")
+            else:
+                console.print(f"  [yellow]カード {outcome.card_id} は既に存在します（inbox に残しました）。[/yellow]")
         except Exception as e:
             console.print(f"  [red]エラー: {e}[/red]")
 
@@ -384,37 +288,20 @@ def inbox():
 @app.command()
 def upgrade(card_id: str):
     """アブストのみのカードを、後から入手したPDFでL3に昇格する。"""
-    if not card_exists(card_id):
-        console.print(f"[red]カード {card_id} が見つかりません。[/red]")
-        raise typer.Exit(1)
-
     pdf_path = PDF_DIR / f"{card_id}.pdf"
-    if not pdf_path.exists():
+    if card_exists(card_id) and not pdf_path.exists():
         inbox_pdfs = list(INBOX_DIR.glob("*.pdf"))
         if inbox_pdfs:
             console.print(f"[yellow]inbox に {len(inbox_pdfs)} 件のPDFがあります。[/yellow]")
             console.print(f"対象PDFを literature/pdf/{card_id}.pdf に配置してから再実行してください。")
         else:
-            console.print(f"[red]PDF が見つかりません。literature/inbox/ に置いてください。[/red]")
+            console.print("[red]PDF が見つかりません。literature/inbox/ に置いてください。[/red]")
         raise typer.Exit(1)
-
-    meta, old_body = read_card(card_id)
-    full_text = extract_text_from_pdf(pdf_path)
-
-    meta.depth = Depth.FULL_TEXT
-    meta.pdf = f"literature/pdf/{card_id}.pdf"
-    meta.updated = date.today()
-
-    l2 = ""
-    if "## L2：判断用要約" in old_body:
-        parts = old_body.split("## L2：判断用要約")
-        if len(parts) > 1:
-            l2_part = parts[1].split("## ")[0]
-            l2 = l2_part.strip()
-
-    body = generate_card_body(meta, l2=l2)
-    write_card(meta, body)
-    index_card(card_id)
+    try:
+        upgrade_card(card_id)
+    except ServiceError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
     console.print(f"[green]カード {card_id} をL3に昇格しました。[/green]")
 
 
@@ -444,31 +331,11 @@ def ask(question: str):
 @app.command()
 def review(theme: str):
     """指定テーマの小レビューを生成する。"""
-    results = search_cards(theme, limit=20)
-    if not results:
+    made = make_review(theme)
+    if made is None:
         console.print("[yellow]関連文献が見つかりません。[/yellow]")
         return
-
-    today = date.today().isoformat()
-    review_dir = Path("notes/reviews")
-    review_dir.mkdir(parents=True, exist_ok=True)
-    safe_theme = theme.replace(" ", "_").replace("/", "_")
-    out_path = review_dir / f"{safe_theme}_{today}.md"
-
-    lines = [f"# 文献レビュー: {theme}", f"生成日: {today}", ""]
-    lines.append("## 関連文献一覧")
-    for r in results:
-        depth = "精読済" if r.get("depth") == "full_text" else "アブストのみ"
-        lines.append(f"- [{r['id']}] {r['title']} ({depth})")
-    lines.append("")
-    lines.append("## 論点の整理")
-    lines.append("（カード内容を基に手動で補完する）")
-    lines.append("")
-    lines.append("## 未解明な点")
-    lines.append("（自研究の立ち位置を明確化する）")
-
-    out_path.write_text("\n".join(lines), encoding="utf-8")
-    console.print(f"[green]レビュー生成: {out_path}[/green]")
+    console.print(f"[green]レビュー生成: {made[0]}[/green]")
 
 
 @app.command("claims")

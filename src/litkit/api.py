@@ -26,7 +26,7 @@ from .thesis import check_all
 from .report import generate_weekly_report
 from .cite import generate_reference_list
 from .translate import translate_batch_to_ja
-from . import auth, preview
+from . import auth, preview, service
 
 app = FastAPI(title="litkit API", version="0.1.0")
 
@@ -506,3 +506,111 @@ def api_timeline():
 def api_reindex():
     count = rebuild_index()
     return {"indexed": count}
+
+
+# ---- 取り込み・昇格・質問・レビュー（CLI の add / inbox / upgrade / ask / review に相当） ----
+
+MAX_PDF_BYTES = 50 * 1024 * 1024
+
+
+def _outcome_dict(o: service.AddOutcome) -> dict:
+    return {
+        "card_id": o.card_id,
+        "created": o.created,
+        "depth": o.depth.value,
+        "title": o.title,
+        "pdf_error": o.pdf_error,
+    }
+
+
+@app.exception_handler(service.ServiceError)
+async def _service_error_handler(request: Request, exc: service.ServiceError):
+    return JSONResponse({"detail": str(exc)}, status_code=exc.code)
+
+
+async def _read_pdf_body(request: Request) -> bytes:
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_PDF_BYTES:
+        raise HTTPException(413, "PDFが大きすぎます（上限50MB）")
+    data = bytearray()
+    async for chunk in request.stream():
+        data.extend(chunk)
+        if len(data) > MAX_PDF_BYTES:
+            raise HTTPException(413, "PDFが大きすぎます（上限50MB）")
+    return bytes(data)
+
+
+class AddRequest(BaseModel):
+    """paper: 検索結果の1件。identifier: DOI または URL。どちらか一方を指定する。"""
+    paper: dict | None = None
+    identifier: str | None = None
+
+
+@app.post("/api/add")
+async def api_add(req: AddRequest):
+    if req.paper:
+        outcome = await service.add_result(service.result_from_dict(req.paper))
+    elif req.identifier and req.identifier.strip():
+        outcome = await service.add_identifier(req.identifier)
+    else:
+        raise HTTPException(400, "検索結果、DOI、URLのいずれかを指定してください")
+    return _outcome_dict(outcome)
+
+
+@app.get("/api/inbox")
+def api_inbox():
+    return {"files": service.inbox_files()}
+
+
+@app.post("/api/inbox/upload")
+async def api_inbox_upload(request: Request, filename: str):
+    """PDFを literature/inbox/ に置く（本体はリクエストボディ）。カード化は /api/inbox/process。"""
+    data = await _read_pdf_body(request)
+    dest = service.save_to_inbox(filename, data)
+    return {"name": dest.name}
+
+
+@app.post("/api/inbox/process")
+async def api_inbox_process():
+    results = []
+    for pdf in service.list_inbox():
+        try:
+            o = await service.add_pdf_from_inbox(pdf)
+            results.append({"file": pdf.name, **_outcome_dict(o)})
+        except Exception as e:
+            reason = str(e) if isinstance(e, service.ServiceError) else type(e).__name__
+            results.append({"file": pdf.name, "error": reason})
+    return {"results": results}
+
+
+@app.post("/api/cards/{card_id}/pdf")
+async def api_card_upgrade(card_id: str, request: Request):
+    """アブストのみのカードに本文PDFを付けて、精読可能なカードに昇格する（本体はPDF）。"""
+    data = await _read_pdf_body(request)
+    service.upgrade_with_pdf_bytes(card_id, data)
+    meta, _ = read_card(card_id)
+    return {"ok": True, "depth": meta.depth.value}
+
+
+@app.get("/api/ask")
+def api_ask(q: str):
+    q = q.strip()
+    if not q:
+        raise HTTPException(400, "質問を入力してください")
+    return {"results": service.ask_cards(q), "keywords": load_research_context()["keywords_ja"][:3]}
+
+
+class ReviewRequest(BaseModel):
+    theme: str
+
+
+@app.post("/api/review")
+def api_review(req: ReviewRequest):
+    theme = req.theme.strip()
+    if not theme:
+        raise HTTPException(400, "テーマを入力してください")
+    made = service.make_review(theme)
+    if made is None:
+        return {"found": False, "text": "", "path": None}
+    path, text = made
+    return {"found": True, "text": text, "path": str(path.relative_to(ROOT))}

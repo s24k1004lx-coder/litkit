@@ -5,9 +5,43 @@ import { Skeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
 import { PageHead } from '../components/PageHead';
 
+const CHECK_LABEL: Record<string, string> = {
+  unsupported_claims: '根拠なし主張',
+  invalid_refs: '無効な引用',
+  terminology: '表記ゆれ',
+  figure_numbering: '図表番号',
+};
+
+type Tool = 'check' | 'claims' | 'cite';
+
+interface ClaimIssue {
+  claim: Claim;
+  issue: string;
+}
+
 export function ThesisPage() {
   const [claims, setClaims] = useState<Claim[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<Tool | null>(null);
+  const [toolError, setToolError] = useState<string | null>(null);
+  const [checkResult, setCheckResult] = useState<Record<string, string[]> | null>(null);
+  const [claimIssues, setClaimIssues] = useState<ClaimIssue[] | null>(null);
+  const [citeText, setCiteText] = useState<string | null>(null);
+  const [usedOnly, setUsedOnly] = useState(false);
+
+  const run = async (tool: Tool, fn: () => Promise<void>) => {
+    setBusy(tool);
+    setToolError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setToolError(e instanceof Error ? e.message : '失敗しました');
+    }
+    setBusy(null);
+  };
+  const runCheck = () => run('check', async () => setCheckResult(await api.check()));
+  const runClaimsCheck = () => run('claims', async () => setClaimIssues((await api.checkClaims()) as ClaimIssue[]));
+  const runCite = () => run('cite', async () => setCiteText((await api.cite(usedOnly)).text));
 
   useEffect(() => {
     api.getClaims().then(setClaims).catch(() => {}).finally(() => setLoading(false));
@@ -21,6 +55,59 @@ export function ThesisPage() {
     <>
       <PageHead title="執筆" sub="Thesis" />
       <div className="main">
+        <div className="toolbar">
+          <span className="info">卒論原稿のチェックと参考文献リスト</span>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button className="btn-export" onClick={runCheck} disabled={busy !== null}>{busy === 'check' ? 'チェック中…' : '整合チェック'}</button>
+            <button className="btn-export" onClick={runClaimsCheck} disabled={busy !== null}>{busy === 'claims' ? 'チェック中…' : '主張の根拠チェック'}</button>
+            <label className="ja-toggle">
+              <input type="checkbox" checked={usedOnly} onChange={(e) => setUsedOnly(e.target.checked)} /> 引用した文献のみ
+            </label>
+            <button className="btn-export" onClick={runCite} disabled={busy !== null}>{busy === 'cite' ? '生成中…' : '参考文献リスト'}</button>
+          </div>
+        </div>
+        {toolError && <div className="err">{toolError}</div>}
+
+        {checkResult && (
+          <div className="d-section">
+            <div className="d-section-title">整合チェック</div>
+            {Object.values(checkResult).every((v) => v.length === 0) ? (
+              <div className="import-line">問題は検出されませんでした</div>
+            ) : (
+              Object.entries(checkResult).filter(([, v]) => v.length > 0).map(([k, v]) => (
+                <div key={k} className="callout warn">
+                  <h3>{CHECK_LABEL[k] ?? k}（{v.length}件）</h3>
+                  <ul>{v.map((m, i) => <li key={i}>{m}</li>)}</ul>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {claimIssues && (
+          <div className="d-section">
+            <div className="d-section-title">主張の根拠チェック</div>
+            {claimIssues.length === 0 ? (
+              <div className="import-line">すべての主張に根拠があります</div>
+            ) : (
+              <div className="callout warn">
+                <h3>問題のある主張（{claimIssues.length}件）</h3>
+                <ul>{claimIssues.map((c) => <li key={c.claim.id}><b>{c.claim.id}</b> {c.claim.text} — {c.issue}</li>)}</ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {citeText !== null && (
+          <div className="d-section">
+            <div className="toolbar" style={{ margin: 0 }}>
+              <div className="d-section-title" style={{ margin: 0 }}>参考文献リスト</div>
+              <button className="act" onClick={() => navigator.clipboard.writeText(citeText).catch(() => {})}>コピー</button>
+            </div>
+            <div className="report">{citeText || '（該当する文献がありません）'}</div>
+          </div>
+        )}
+
         {loading ? (
           <div style={{ marginTop: 28 }}><Skeleton height={44} count={5} /></div>
         ) : claims.length === 0 ? (

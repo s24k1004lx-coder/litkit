@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, type CardMeta } from '../lib/api';
 import { Badge } from '../components/Badge';
@@ -17,6 +17,9 @@ export function PaperDetail() {
   const [memo, setMemo] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
+  const [upgradeError, setUpgradeError] = useState<string | null>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -40,6 +43,19 @@ export function PaperDetail() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const upgrade = async (file: File) => {
+    if (!id) return;
+    setUpgrading(true);
+    setUpgradeError(null);
+    try {
+      await api.upgradeCard(id, file);
+      setCard(await api.getCard(id));
+    } catch (e) {
+      setUpgradeError(e instanceof Error ? e.message : '昇格に失敗しました');
+    }
+    setUpgrading(false);
   };
 
   const back = (
@@ -105,8 +121,16 @@ export function PaperDetail() {
           <div className="card-body plain">
             <div className="callout warn" style={{ marginBottom: 0 }}>
               <h3>本文未取得のため精読要約はありません</h3>
-              PDFを literature/inbox/ に置いて litkit upgrade {card.id} で昇格できます
+              本文PDFを追加すると、本文ありのカードに昇格できます。
             </div>
+            <div className="d-links" style={{ marginTop: 16 }}>
+              <button className="d-link primary" onClick={() => pdfRef.current?.click()} disabled={upgrading}>
+                {upgrading ? '昇格中…' : 'PDFを選んで昇格'}
+              </button>
+              <input ref={pdfRef} type="file" accept="application/pdf,.pdf" hidden
+                onChange={e => { const f = e.target.files?.[0]; if (f) upgrade(f); e.target.value = ''; }} />
+            </div>
+            {upgradeError && <div className="d-err">{upgradeError}</div>}
           </div>
         ) : (
           <div className="card-body">{l3 || '（L3未作成）'}</div>

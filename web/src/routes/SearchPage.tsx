@@ -62,6 +62,8 @@ export function SearchPage() {
   const toastTimer = useRef<number | undefined>(undefined);
 
   const bm = useBookmarks();
+  const [added, setAdded] = useState<Set<string>>(() => new Set());
+  const [adding, setAdding] = useState<string | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -216,6 +218,24 @@ export function SearchPage() {
     }
   };
 
+  const inLibrary = (r: SearchResultItem) => r.has_card || added.has(paperKey(r));
+
+  /** 検索結果をライブラリ（文献カード）に取り込む。本文PDFが公開されていれば一緒に取得される。 */
+  const addToLibrary = useCallback(async (r: SearchResultItem) => {
+    const key = paperKey(r);
+    setAdding(key);
+    try {
+      const o = await api.addPaper(r);
+      setAdded((prev) => new Set(prev).add(key));
+      if (!o.created) showToast('既にライブラリにあります');
+      else if (o.pdf_error) showToast('追加しました（本文PDFは取得できず、アブストのみ）');
+      else showToast(o.depth === 'full_text' ? 'ライブラリに追加しました（本文あり）' : 'ライブラリに追加しました（アブストのみ）');
+    } catch (e) {
+      showToast(e instanceof Error ? `追加に失敗しました: ${e.message}` : '追加に失敗しました');
+    }
+    setAdding(null);
+  }, [showToast]);
+
   const base = similar ? similar.items : results;
 
   const visible = useMemo(() => {
@@ -264,7 +284,7 @@ export function SearchPage() {
         <div className="p-badges">
           <span className={`bdg bdg-api ${sourceClass(r.source)}`}>{sourceName(r.source)}</span>
           <span className={`bdg bdg-api rel-${r.relevance}`}>関連度 {RELEVANCE_LABEL[r.relevance] ?? r.relevance}</span>
-          {r.has_card && <span className="bdg bdg-api bdg-card">取込済</span>}
+          {inLibrary(r) && <span className="bdg bdg-api bdg-card">取込済</span>}
           {r.venue && <span className="bdg bdg-src" title={r.venue}>{r.venue}</span>}
           {r.pdf_url && <a className="bdg bdg-pdf" href={r.pdf_url} target="_blank" rel="noopener noreferrer">PDF</a>}
           {doiHref && <a className="bdg bdg-doi" href={doiHref} target="_blank" rel="noopener noreferrer">DOI</a>}
@@ -276,6 +296,9 @@ export function SearchPage() {
         )}
         <div className="p-actions">
           <button className="act detail" onClick={() => setSelected(r)}>{r.abstract ? '要約を見る' : '要約を探す'}</button>
+          <button className={`act ${inLibrary(r) ? 'on' : ''}`} disabled={inLibrary(r) || adding === paperKey(r)} onClick={() => addToLibrary(r)}>
+            {inLibrary(r) ? '✓ ライブラリ済' : adding === paperKey(r) ? '追加中…' : '＋ ライブラリに追加'}
+          </button>
           <button className={`act ${saved ? 'on' : ''}`} onClick={() => { bm.toggle(r); showToast(saved ? 'ブックマーク解除' : 'ブックマークに追加'); }}>
             {saved ? '★ 保存済' : '☆ 保存'}
           </button>
@@ -438,6 +461,9 @@ export function SearchPage() {
           onSave={(fields) => { bm.patch(selected, fields); showToast('メモを保存しました'); }}
           onSaveIfBookmarked={(fields) => bm.patchIfSaved(selected, fields)}
           onSimilar={() => findSimilar(selected)}
+          inLibrary={inLibrary(selected)}
+          adding={adding === paperKey(selected)}
+          onAdd={() => addToLibrary(selected)}
         />
       )}
 

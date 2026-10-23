@@ -36,6 +36,45 @@ async function put<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+/** PDFなど生のバイト列を本体にして送る。失敗時は理由を Error の message で返す */
+async function postBytes<T>(path: string, file: File): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/pdf' },
+    body: file,
+  });
+  if (!res.ok) throw await errorFrom(res);
+  return res.json();
+}
+
+export interface AddOutcome {
+  card_id: string;
+  /** false なら既にカードがあった */
+  created: boolean;
+  depth: string;
+  title: string;
+  pdf_error: string | null;
+}
+
+export interface InboxProcessResult extends Partial<AddOutcome> {
+  file: string;
+  error?: string;
+}
+
+export interface AskHit {
+  id: string;
+  title: string;
+  l1: string | null;
+  depth: string;
+  abstract_only: boolean;
+}
+
+export interface ReviewResult {
+  found: boolean;
+  text: string;
+  path: string | null;
+}
+
 export interface Stats {
   total_cards: number;
   full_text: number;
@@ -227,6 +266,18 @@ export const api = {
   getTags: () => get<TagCount[]>('/tags'),
   getTimeline: () => get<TimelineEntry[]>('/timeline'),
   reindex: () => post<{ indexed: number }>('/reindex'),
+
+  // 取り込み（検索結果・DOI・URL・PDF）
+  addPaper: (paper: SearchResultItem) => post<AddOutcome>('/add', { paper }),
+  addIdentifier: (identifier: string) => post<AddOutcome>('/add', { identifier }),
+  getInbox: () => get<{ files: { name: string; size: number }[] }>('/inbox'),
+  uploadToInbox: (file: File) => postBytes<{ name: string }>(`/inbox/upload?filename=${encodeURIComponent(file.name)}`, file),
+  processInbox: () => post<{ results: InboxProcessResult[] }>('/inbox/process'),
+  upgradeCard: (id: string, file: File) => postBytes<{ ok: boolean; depth: string }>(`/cards/${encodeURIComponent(id)}/pdf`, file),
+
+  // 蓄積文献への質問・小レビュー
+  ask: (q: string) => get<{ results: AskHit[]; keywords: string[] }>(`/ask?q=${encodeURIComponent(q)}`),
+  review: (theme: string) => post<ReviewResult>('/review', { theme }),
 
   // 検索結果のプレビュー補助（カード化前の参考情報）
   previewAbstract: (urls: string[]) =>

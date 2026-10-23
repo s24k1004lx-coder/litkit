@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 from typing import Optional
@@ -117,10 +118,23 @@ def index_card(card_id: str) -> None:
     conn.close()
 
 
+def _query_terms(query: str) -> list[str]:
+    """検索語を単語に分ける。記号を落とすので、FTS5の構文エラー（"ui-smoke" など）にならない。"""
+    return [t for t in re.findall(r"\w+", query) if t]
+
+
 def search_cards(query: str, limit: int = 20) -> list[dict]:
-    """FTS5で全文検索する。CLIからもAPIからも呼べる。"""
+    """全文検索する。CLIからもAPIからも呼べる。
+
+    FTS5（いずれかの語に一致）で探し、1件も見つからなければ部分一致で探す。
+    日本語は FTS5 の既定の分かち書きでは語に分かれないため、後者が必要。
+    """
+    terms = _query_terms(query)
+    if not terms:
+        return []
     conn = get_connection()
     init_db(conn)
+    match = " OR ".join('"' + t.replace('"', '""') + '"' for t in terms)
     rows = conn.execute(
         """SELECT c.*, rank
            FROM cards_fts fts
@@ -128,8 +142,12 @@ def search_cards(query: str, limit: int = 20) -> list[dict]:
            WHERE cards_fts MATCH ?
            ORDER BY rank
            LIMIT ?""",
-        (query, limit),
+        (match, limit),
     ).fetchall()
+    if not rows:
+        like = " OR ".join("(title LIKE ? OR l1 LIKE ? OR tags LIKE ? OR body LIKE ?)" for _ in terms)
+        params = [f"%{t}%" for t in terms for _ in range(4)]
+        rows = conn.execute(f"SELECT * FROM cards WHERE {like} LIMIT ?", (*params, limit)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
