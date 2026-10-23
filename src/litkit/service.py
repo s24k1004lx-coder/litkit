@@ -11,9 +11,9 @@ from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .card import card_exists, generate_card_body, read_card, write_card
+from .card import card_exists, card_path, generate_card_body, read_card, write_card
 from .config import INBOX_DIR, NOTES_DIR, PDF_DIR, load_research_context
-from .index import index_card, search_cards
+from .index import index_card, remove_card, search_cards
 from .ingest import (
     download_pdf, extract_metadata_from_pdf, extract_text_from_pdf, list_inbox, move_from_inbox,
 )
@@ -289,6 +289,19 @@ def upgrade_with_pdf_bytes(card_id: str, data: bytes) -> None:
         else:
             dest.unlink(missing_ok=True)
         raise
+
+
+def delete_card(card_id: str, delete_pdf: bool = False) -> None:
+    """カードをライブラリから削除する。PDFは delete_pdf=True のときだけ消す。"""
+    if not CARD_ID_RE.match(card_id) or not card_exists(card_id):
+        raise ServiceError(f"カード {card_id} が見つかりません", 404)
+    meta, _ = read_card(card_id)
+    card_path(card_id).unlink()
+    remove_card(card_id)
+    if delete_pdf and meta.pdf:
+        pdf = (PDF_DIR / Path(meta.pdf).name).resolve()
+        if pdf.parent == PDF_DIR.resolve():
+            pdf.unlink(missing_ok=True)
 
 
 def ask_cards(question: str, limit: int = 10) -> list[dict]:

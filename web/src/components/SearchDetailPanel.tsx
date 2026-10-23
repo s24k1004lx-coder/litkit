@@ -19,6 +19,8 @@ interface Props {
   inLibrary: boolean;
   adding: boolean;
   onAdd: () => void;
+  /** true なら右からのパネルではなく、ページとして表示する（onClose は「戻る」） */
+  page?: boolean;
 }
 
 type CiteTab = 'apa' | 'bib' | 'plain';
@@ -31,7 +33,7 @@ function candidateUrls(p: SearchResultItem): string[] {
 /** 画面右からスライドインする詳細パネル（paper-researcher のレイアウト）。 */
 export function SearchDetailPanel({
   paper: p, bookmark, ja, onClose, onToggleBookmark, onSave, onSaveIfBookmarked, onSimilar,
-  inLibrary, adding, onAdd,
+  inLibrary, adding, onAdd, page = false,
 }: Props) {
   const [tldr, setTldr] = useState<string | null>(bookmark?.tldr ?? null);
   const [extraAbstract, setExtraAbstract] = useState<{ text: string; source: string } | null>(null);
@@ -117,14 +119,8 @@ export function SearchDetailPanel({
     }
   };
 
-  return (
-    <>
-      <div className="overlay open" onClick={onClose} />
-      <aside className="panel open" role="dialog" aria-label="論文の詳細">
-        <div className="panel-close">
-          <button className="btn-close" onClick={onClose}>閉じる</button>
-        </div>
-        <div className="panel-inner">
+  const content = (
+        <div className={page ? 'result-page' : 'panel-inner'}>
           <h2 className="d-title"><TranslatedText text={p.title} enabled={ja} /></h2>
           <div className="d-authors">{p.authors.join(', ') || '著者不明'}</div>
           <div className="d-meta">
@@ -144,7 +140,7 @@ export function SearchDetailPanel({
             {p.pdf_url && <a className="d-link primary" href={p.pdf_url} target="_blank" rel="noopener noreferrer">PDF を開く</a>}
             {p.doi && <a className="d-link" href={p.doi.startsWith('http') ? p.doi : `https://doi.org/${p.doi}`} target="_blank" rel="noopener noreferrer">DOI</a>}
             {p.url && <a className="d-link" href={p.url} target="_blank" rel="noopener noreferrer">{sourceName(p.source)}</a>}
-            <button className="d-link" onClick={() => { onSimilar(); onClose(); }}>類似論文を探す</button>
+            <button className="d-link" onClick={() => { onSimilar(); if (!page) onClose(); }}>類似論文を探す</button>
           </div>
 
           {busy === 'enrich' && <div className="d-loading"><div className="spinner sm" />Semantic Scholar から補足情報を取得中…</div>}
@@ -235,6 +231,24 @@ export function SearchDetailPanel({
             情報の範囲: アブストラクト（または PDF 冒頭）に基づく参考情報です。「ライブラリに追加」してカード化するまで根拠IDはなく、論文の内容として記述する根拠にはできません。
           </div>
         </div>
+  );
+
+  if (page) {
+    return (
+      <div className="main">
+        <button className="back" onClick={onClose}>← 検索結果に戻る</button>
+        {content}
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className="overlay open" onClick={onClose} />
+      <aside className="panel open" role="dialog" aria-label="論文の詳細">
+        <div className="panel-close">
+          <button className="btn-close" onClick={onClose}>閉じる</button>
+        </div>
+        {content}
       </aside>
     </>
   );

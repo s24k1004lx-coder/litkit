@@ -9,6 +9,7 @@ import { ThesisPage } from './routes/ThesisPage';
 import { ReportsPage } from './routes/ReportsPage';
 import { ImportPage } from './routes/ImportPage';
 import { AskPage } from './routes/AskPage';
+import { ResultPage } from './routes/ResultPage';
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/search" element={<SearchPage />} />
         <Route path="/import" element={<ImportPage />} />
           <Route path="/ask" element={<AskPage />} />
+          <Route path="/result" element={<ResultPage />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/paper/:id" element={<PaperDetail />} />
           <Route path="/thesis" element={<ThesisPage />} />

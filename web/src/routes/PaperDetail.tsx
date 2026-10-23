@@ -58,6 +58,18 @@ export function PaperDetail() {
     setUpgrading(false);
   };
 
+  const remove = async () => {
+    if (!id || !card) return;
+    if (!window.confirm(`「${card.title}」をライブラリから削除します。元に戻せません。よろしいですか？`)) return;
+    const withPdf = !!card.pdf && window.confirm('保存してある本文PDFも削除しますか？（OK: 削除 / キャンセル: 残す）');
+    try {
+      await api.deleteCard(id, withPdf);
+      navigate('/library', { replace: true });
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : '削除に失敗しました');
+    }
+  };
+
   const back = (
     <button className="back" onClick={() => navigate(-1)}>← 戻る</button>
   );
@@ -103,6 +115,7 @@ export function PaperDetail() {
         <div className="d-links">
           {card.url && <a className="d-link primary" href={card.url} target="_blank" rel="noopener noreferrer">論文ページを開く</a>}
           {card.doi && <button className="d-link" onClick={() => navigator.clipboard.writeText(card.doi!)}>DOIをコピー</button>}
+          <button className="d-link danger" onClick={remove}>ライブラリから削除</button>
         </div>
       </div>
 

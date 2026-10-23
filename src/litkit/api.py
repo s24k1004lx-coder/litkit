@@ -592,6 +592,12 @@ async def api_card_upgrade(card_id: str, request: Request):
     return {"ok": True, "depth": meta.depth.value}
 
 
+@app.delete("/api/cards/{card_id}")
+def api_card_delete(card_id: str, delete_pdf: bool = False):
+    service.delete_card(card_id, delete_pdf)
+    return {"ok": True}
+
+
 @app.get("/api/ask")
 def api_ask(q: str):
     q = q.strip()

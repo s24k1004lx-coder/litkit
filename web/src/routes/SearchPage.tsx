@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { api, type SearchResultItem } from '../lib/api';
-import { useBookmarks, bookmarksToMarkdown, type Bookmark } from '../lib/bookmarks';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useBookmarks, bookmarksToMarkdown } from '../lib/bookmarks';
+import { stashPaper } from '../lib/resultNav';
 import { bulletPoints, citeAPA, paperKey } from '../lib/paperUtils';
 import { SEARCHABLE_SOURCES, sourceClass, sourceName } from '../lib/sources';
-import { SearchDetailPanel } from '../components/SearchDetailPanel';
 
 type Tab = 'results' | 'bookmarks';
 type SortKey = 'match' | 'arrival' | 'relevance' | 'year';
@@ -36,33 +37,45 @@ function loadJa(): boolean {
   }
 }
 
+/** 詳細ページへ移って戻ってきても、検索結果と条件が残るよう画面を離れる時点の状態を覚えておく。 */
+interface Snapshot {
+  query: string; results: SearchResultItem[]; enQuery: string | null; searched: boolean;
+  tab: Tab; yearFrom: string; yearTo: string; sort: SortKey; target: string; activeQuery: string;
+  page: number; hasMore: boolean; srcErrors: string[]; similar: { title: string; items: SearchResultItem[] } | null;
+  added: Set<string>; sourcesLoaded: string[];
+}
+let snapshot: Snapshot | null = null;
+let savedScroll = 0;
+
 export function SearchPage() {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResultItem[]>([]);
-  const [enQuery, setEnQuery] = useState<string | null>(null);
+  const snap = snapshot;
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [query, setQuery] = useState(snap?.query ?? '');
+  const [results, setResults] = useState<SearchResultItem[]>(snap?.results ?? []);
+  const [enQuery, setEnQuery] = useState<string | null>(snap?.enQuery ?? null);
   const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
-  const [selected, setSelected] = useState<SearchResultItem | null>(null);
-  const [sourcesLoaded, setSourcesLoaded] = useState<string[]>([]);
+  const [searched, setSearched] = useState(snap?.searched ?? false);
+  const [sourcesLoaded, setSourcesLoaded] = useState<string[]>(snap?.sourcesLoaded ?? []);
   const abortRef = useRef<(() => void) | null>(null);
 
-  const [tab, setTab] = useState<Tab>('results');
-  const [yearFrom, setYearFrom] = useState('');
-  const [yearTo, setYearTo] = useState('');
-  const [sort, setSort] = useState<SortKey>('match');
-  const [target, setTarget] = useState<string>('all');
-  const [activeQuery, setActiveQuery] = useState('');
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-  const [srcErrors, setSrcErrors] = useState<string[]>([]);
+  const [tab, setTab] = useState<Tab>(snap?.tab ?? 'results');
+  const [yearFrom, setYearFrom] = useState(snap?.yearFrom ?? '');
+  const [yearTo, setYearTo] = useState(snap?.yearTo ?? '');
+  const [sort, setSort] = useState<SortKey>(snap?.sort ?? 'match');
+  const [target, setTarget] = useState<string>(snap?.target ?? 'all');
+  const [activeQuery, setActiveQuery] = useState(snap?.activeQuery ?? '');
+  const [page, setPage] = useState(snap?.page ?? 1);
+  const [hasMore, setHasMore] = useState(snap?.hasMore ?? false);
+  const [srcErrors, setSrcErrors] = useState<string[]>(snap?.srcErrors ?? []);
   const [ja, setJa] = useState(loadJa);
-  const [similar, setSimilar] = useState<{ title: string; items: SearchResultItem[] } | null>(null);
+  const [similar, setSimilar] = useState<{ title: string; items: SearchResultItem[] } | null>(snap?.similar ?? null);
   const [similarLoading, setSimilarLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 
   const bm = useBookmarks();
-  const [added, setAdded] = useState<Set<string>>(() => new Set());
+  const [added, setAdded] = useState<Set<string>>(() => new Set(snap?.added ?? []));
   const [adding, setAdding] = useState<string | null>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -83,7 +96,6 @@ export function SearchPage() {
     setSearched(true);
     setTab('results');
     setSimilar(null);
-    setSelected(null);
     setResults([]);
     setEnQuery(null);
     setSourcesLoaded([]);
@@ -148,8 +160,7 @@ export function SearchPage() {
         showToast('関連論文の情報がありません');
       } else {
         setSimilar({ title: p.title, items: r.results });
-        setSelected(null);
-      }
+          }
     } catch {
       showToast('関連論文の取得に失敗しました');
     }
@@ -169,21 +180,42 @@ export function SearchPage() {
           el.focus();
         }
       }
-      if (e.key === 'Escape') setSelected(null);
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  // 詳細パネルを開いている間は背面のスクロールを止める
+  // 画面を離れるたびに状態を覚え、戻ったときに復元する
   useEffect(() => {
-    if (!selected) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [selected]);
+    snapshot = { query, results, enQuery, searched, tab, yearFrom, yearTo, sort, target, activeQuery, page, hasMore, srcErrors, similar, added, sourcesLoaded };
+  });
+
+  // 詳細ページから戻ったときは、開く前のスクロール位置に戻す
+  useEffect(() => {
+    if (snap && savedScroll > 0) {
+      const y = savedScroll;
+      savedScroll = 0;
+      requestAnimationFrame(() => window.scrollTo(0, y));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 詳細ページの「類似論文を探す」から来たとき
+  useEffect(() => {
+    const p = (location.state as { similarOf?: SearchResultItem } | null)?.similarOf;
+    if (p) {
+      navigate(location.pathname, { replace: true, state: null });
+      findSimilar(p);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 論文の詳細ページを開く */
+  const openPaper = (r: SearchResultItem) => {
+    savedScroll = window.scrollY;
+    stashPaper(r);
+    navigate('/result', { state: { paper: r } });
+  };
 
   const toggleJa = (v: boolean) => {
     setJa(v);
@@ -271,11 +303,7 @@ export function SearchPage() {
     return (
       <div className="paper" key={paperKey(r)}>
         <h3 className="p-title">
-          {href ? (
-            <a href={href} target="_blank" rel="noopener noreferrer">{r.title || '（タイトルなし）'}</a>
-          ) : (
-            <span className={r.title ? undefined : 'p-empty-title'}>{r.title || '（タイトルなし）'}</span>
-          )}
+          <a href="/result" onClick={(e) => { e.preventDefault(); openPaper(r); }}>{r.title || '（タイトルなし）'}</a>
         </h3>
         <div className="p-meta">
           <span>{r.authors.slice(0, 4).join(', ') || '著者不明'}{r.authors.length > 4 ? ' 他' : ''}</span>
@@ -286,6 +314,7 @@ export function SearchPage() {
           <span className={`bdg bdg-api rel-${r.relevance}`}>関連度 {RELEVANCE_LABEL[r.relevance] ?? r.relevance}</span>
           {inLibrary(r) && <span className="bdg bdg-api bdg-card">取込済</span>}
           {r.venue && <span className="bdg bdg-src" title={r.venue}>{r.venue}</span>}
+          {href && <a className="bdg bdg-doi" href={href} target="_blank" rel="noopener noreferrer">原文サイト</a>}
           {r.pdf_url && <a className="bdg bdg-pdf" href={r.pdf_url} target="_blank" rel="noopener noreferrer">PDF</a>}
           {doiHref && <a className="bdg bdg-doi" href={doiHref} target="_blank" rel="noopener noreferrer">DOI</a>}
         </div>
@@ -295,7 +324,7 @@ export function SearchPage() {
           </ul>
         )}
         <div className="p-actions">
-          <button className="act detail" onClick={() => setSelected(r)}>{r.abstract ? '要約を見る' : '要約を探す'}</button>
+          <button className="act detail" onClick={() => openPaper(r)}>詳細を見る</button>
           <button className={`act ${inLibrary(r) ? 'on' : ''}`} disabled={inLibrary(r) || adding === paperKey(r)} onClick={() => addToLibrary(r)}>
             {inLibrary(r) ? '✓ ライブラリ済' : adding === paperKey(r) ? '追加中…' : '＋ ライブラリに追加'}
           </button>
@@ -309,10 +338,6 @@ export function SearchPage() {
       </div>
     );
   };
-
-  const selectedBookmark: Bookmark | undefined = selected
-    ? bm.items.find((b) => paperKey(b) === paperKey(selected))
-    : undefined;
 
   const spinning = loading || similarLoading;
 
@@ -449,23 +474,6 @@ export function SearchPage() {
           </div>
         )}
       </div>
-
-      {selected && (
-        <SearchDetailPanel
-          key={paperKey(selected)}
-          paper={selected}
-          bookmark={selectedBookmark}
-          ja={ja}
-          onClose={() => setSelected(null)}
-          onToggleBookmark={() => bm.toggle(selected)}
-          onSave={(fields) => { bm.patch(selected, fields); showToast('メモを保存しました'); }}
-          onSaveIfBookmarked={(fields) => bm.patchIfSaved(selected, fields)}
-          onSimilar={() => findSimilar(selected)}
-          inLibrary={inLibrary(selected)}
-          adding={adding === paperKey(selected)}
-          onAdd={() => addToLibrary(selected)}
-        />
-      )}
 
       <div className={`toast${toast ? ' on' : ''}`}>{toast}</div>
     </div>

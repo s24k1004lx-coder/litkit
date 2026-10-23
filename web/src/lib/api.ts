@@ -268,6 +268,10 @@ export const api = {
   reindex: () => post<{ indexed: number }>('/reindex'),
 
   // 取り込み（検索結果・DOI・URL・PDF）
+  deleteCard: async (id: string, deletePdf: boolean): Promise<void> => {
+    const res = await fetch(`${BASE}/cards/${encodeURIComponent(id)}?delete_pdf=${deletePdf}`, { method: 'DELETE' });
+    if (!res.ok) throw await errorFrom(res);
+  },
   addPaper: (paper: SearchResultItem) => post<AddOutcome>('/add', { paper }),
   addIdentifier: (identifier: string) => post<AddOutcome>('/add', { identifier }),
   getInbox: () => get<{ files: { name: string; size: number }[] }>('/inbox'),

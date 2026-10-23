@@ -94,6 +94,15 @@ def rebuild_index() -> int:
     return count
 
 
+def remove_card(card_id: str) -> None:
+    """1枚のカードを索引から外す。"""
+    conn = get_connection()
+    init_db(conn)
+    conn.execute("DELETE FROM cards WHERE id = ?", (card_id,))
+    conn.commit()
+    conn.close()
+
+
 def index_card(card_id: str) -> None:
     """1枚のカードを索引に追加/更新する。"""
     conn = get_connection()
